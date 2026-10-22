@@ -544,24 +544,33 @@ export class HarnessRuntime {
       const segStart = prev && prev.foldedCount < lastUser ? prev.foldedCount : 0
       const segment = s.messages.slice(segStart, lastUser)
       const incremental = segStart > 0
-      const headView = buildContextView(segment, policy.budgetChars * 0.7, policy.recentFullResults).messages
       // 摘要请求 = 原对话前缀逐字重放 + 末尾 user 指令（DSH 做法：复用 provider 前缀缓存，
       // 使摘要调用本身的输入大部分走缓存价）
       const instruction = incremental
-        ? 'Update the rolling summary for the AI coding agent whose work is shown above. Append a concise delta ' +
-          '(markdown, ≤200 words) covering only NEW information: decisions, workspace changes (exact paths), ' +
-          'findings, updated next steps. Do not repeat what is already summarized. ' +
-          'Preserve exact file paths and numbers. Write in the conversation language. Output ONLY the update.'
-        : 'Compress the conversation above (everything before this message) into a summary with EXACTLY these ' +
-          'markdown sections:\n## Primary Request — the user\'s original task & constraints\n' +
+        ? 'Update the rolling summary for this conversation. The block at the top (starting with "[Conversation ' +
+          'compacted") is the EXISTING summary — do not repeat it. Summarize ONLY the messages between that block ' +
+          'and the most recent user message: append a concise delta (markdown, ≤200 words) covering new decisions, ' +
+          'workspace changes (exact paths), findings, and updated next steps. Preserve exact file paths and numbers. ' +
+          'Write in the conversation language. Output ONLY the update.'
+        : 'Compress this conversation (everything BEFORE the most recent user message) into a summary with EXACTLY ' +
+          'these markdown sections:\n## Primary Request — the user\'s original task & constraints\n' +
           '## Key Decisions & Findings\n## Workspace State — files (exact paths) + purpose, todos\n' +
           '## Errors & Fixes\n## Pending Jobs\n## Current Work — what was in flight at the end\n' +
           '## Next Step\n## Critical Context — numbers, names, URLs that must survive verbatim\n' +
           'Rules: ≤500 words; preserve exact file paths and numbers; write in the conversation language. ' +
           'Output ONLY the summary.'
       let summary = ''
+      // 缓存对齐（关键）：摘要请求复用与主对话完全相同的前缀 [稳定 system + 同一视图]，
+      // 仅以指令替换尾部的快照消息 → 输入几乎全部命中前缀缓存（DSH 做法）。
+      // 此前"片段裸发"从第 0 token 起就与缓存前缀不符，整包按未命中价计费。
+      const summaryMessages = effectiveMessages(s)
+      const summaryView = buildContextView(summaryMessages, policy.budgetChars, policy.recentFullResults)
       for await (const chunk of client.streamChat({
-        messages: [...headView, { role: 'user', content: instruction }],
+        messages: [
+          { role: 'system', content: this.stablePrompt() },
+          ...summaryView.messages,
+          { role: 'user', content: instruction },
+        ],
       })) {
         if (chunk.content) summary += chunk.content
       }

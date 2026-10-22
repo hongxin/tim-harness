@@ -949,7 +949,8 @@ const FINAL = () => [
   const req2All = JSON.stringify(req2.messages)
   assert(req2All.includes('新任务三') && !req2All.includes('早期任务3'), '增量压缩：摘要调用只发送新增段（成本O(增量)）')
   assert(req2.messages[req2.messages.length - 1].role === 'user' && req2.messages[req2.messages.length - 1].content.includes('rolling summary'), 'Token经济：摘要请求=前缀重放+末尾指令（缓存友好）')
-  assert(req2.messages[0].role !== 'system' || req2.messages[0].content.includes('新'), 'Token经济：摘要请求无独立总结 system 段')
+  assert(req2.messages[0].role === 'system' && !req2.messages[0].content.includes('Task list'), 'Token经济：摘要请求以稳定 system 开头（与主对话前缀对齐）')
+  assert(req2.messages[1].content.startsWith('[Conversation compacted'), 'Token经济：摘要请求携带压缩标记消息（与主对话结构一致）')
 
   // 15e. 工具结果中段修剪（DSH pruner）：>8192 字符保头4096+尾1024删中间
   const { pruneMiddle } = await import('../src/core/util/text')
@@ -1069,6 +1070,15 @@ const FINAL = () => [
   await new Promise((r) => setTimeout(r, 150)) // 等自动压缩完成
   const cb = rt17b.getSnapshot().session!.compacted
   assert(!!cb && cb.foldedCount === 4, `守卫修复：自动压缩按 sent 触发并折叠头部（folded=${cb?.foldedCount}）`)
+  // 缓存对齐：摘要请求与主对话请求的公共前缀逐字一致（仅末尾消息不同）
+  const mainReq = JSON.parse(t17b.requests[0]).messages
+  const sumReq = JSON.parse(t17b.requests[1]).messages
+  const common = Math.min(mainReq.length, sumReq.length) - 1 // 各自末尾（快照/指令）不同
+  let aligned = true
+  for (let k = 0; k < common; k++) {
+    if (mainReq[k].role !== sumReq[k].role || mainReq[k].content !== sumReq[k].content) { aligned = false; break }
+  }
+  assert(aligned && common >= 5, `Token经济：摘要请求与主对话前缀逐字对齐（${common} 条公共消息 → 输入几乎全走缓存价）`)
   assert(cb!.summary.includes('增量摘要OK'), '守卫修复：增量摘要内容正确')
 
   // 17c. 头部字符量过小仍被拒绝（避免无谓的摘要调用）
