@@ -944,10 +944,44 @@ const FINAL = () => [
   const c2 = rt15d.getSnapshot().session!.compacted!
   assert(c2.summary.includes('首次摘要') && c2.summary.includes('增量内容A'), '增量压缩：摘要追加合并')
   assert(c2.foldedCount === 16, `增量压缩：折叠边界推进（${c2.foldedCount}）`)
-  // 第二次摘要请求只含新增段
+  // 第二次摘要请求：原对话前缀重放 + 末尾 user 指令（无独立 system，复用缓存）
   const req2 = JSON.parse(t15d.requests[1])
   const req2All = JSON.stringify(req2.messages)
   assert(req2All.includes('新任务三') && !req2All.includes('早期任务3'), '增量压缩：摘要调用只发送新增段（成本O(增量)）')
+  assert(req2.messages[req2.messages.length - 1].role === 'user' && req2.messages[req2.messages.length - 1].content.includes('rolling summary'), 'Token经济：摘要请求=前缀重放+末尾指令（缓存友好）')
+  assert(req2.messages[0].role !== 'system' || req2.messages[0].content.includes('新'), 'Token经济：摘要请求无独立总结 system 段')
+
+  // 15e. 工具结果中段修剪（DSH pruner）：>8192 字符保头4096+尾1024删中间
+  const { pruneMiddle } = await import('../src/core/util/text')
+  const fat = 'HEAD'.repeat(6000) + 'MIDDLE'.repeat(2000) + 'TAIL'.repeat(600)
+  const pruned = pruneMiddle(fat)
+  assert(pruned.length < fat.length / 2, '中段修剪：长度大幅缩减')
+  assert(pruned.startsWith('HEAD') && pruned.endsWith('TAIL'.repeat(200)), '中段修剪：保头保尾')
+  assert(pruned.includes('middle pruned'), '中段修剪：带省略标记')
+  assert(pruneMiddle('short').length === 5, '中段修剪：短输出原样通过')
+  // 经由 loop 的端到端：write 大文件 → read 全量 → 工具结果入历史时被修剪
+  const fs15e = new TestFS()
+  await fs15e.writeFile('/fat.txt', 'A'.repeat(20_000))
+  const t15e = new ScriptedTransport([
+    [
+      toolCallChunk('p1', 'read_file', '{"path":"/fat.txt"}', true),
+      sse({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }),
+    ],
+    [sse({ choices: [{ index: 0, delta: { content: 'done' }, finish_reason: 'stop' }] })],
+  ])
+  const rt15e = new HarnessRuntime({
+    kv: new MapKV(), fs: fs15e, transport: t15e,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt15e.boot()
+  await rt15e.saveSettings({
+    providers: [{ id: 'mock', name: 'M', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'm' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null, costTier: 'full',
+  })
+  await rt15e.send('读大文件')
+  const toolMsg15e = rt15e.getSnapshot().session!.messages.find((m) => m.role === 'tool')
+  assert(toolMsg15e!.content!.includes('middle pruned'), '中段修剪：loop 入账前统一修剪')
+  assert((toolMsg15e!.content?.length ?? 0) < 8_000, '中段修剪：入历史结果 <8k 字符')
   // 无新增时手动压缩被拒绝
   const again = await rt15d.compactSession(false)
   assert(again === false, '增量压缩：无新增内容时拒绝空压缩')

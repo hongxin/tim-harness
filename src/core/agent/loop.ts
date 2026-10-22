@@ -24,6 +24,7 @@ import type { ToolRegistry } from '../tools/registry'
 import { repairTrailingToolCalls } from '../session/repair'
 import { effectiveMessages } from '../session/session'
 import { tierPolicy } from '../token-economy'
+import { pruneMiddle } from '../util/text'
 import { buildContextView } from './context'
 
 export const DEFAULT_MAX_ITERATIONS = 24
@@ -227,7 +228,8 @@ export class AgentRunner {
         const durationMs = Date.now() - t0
 
         // 重复失败检测：同一工具 + 同一参数连续失败 → 注入换策略警告
-        let output = result.output
+        // （先做中段修剪：超长工具结果保头尾删中段，防胖历史——DSH pruner 思想）
+        let output = pruneMiddle(result.output)
         if (!result.ok) {
           const sig = `${call.name}:${call.arguments}`
           if (sig === lastFailedSignature) {

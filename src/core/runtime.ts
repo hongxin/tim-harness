@@ -27,7 +27,7 @@ import { deriveTitle, effectiveMessages, newSession } from './session/session'
 import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
 import { scanSkills, type SkillMeta } from './tools/skills'
-import { buildContextView } from './agent/context'
+import { buildContextView, estimateChars } from './agent/context'
 import { tierPolicy } from './token-economy'
 import {
   listSnapshots,
@@ -523,30 +523,34 @@ export class HarnessRuntime {
       const segment = s.messages.slice(segStart, lastUser)
       const incremental = segStart > 0
       const headView = buildContextView(segment, policy.budgetChars * 0.7, policy.recentFullResults).messages
+      // 摘要请求 = 原对话前缀逐字重放 + 末尾 user 指令（DSH 做法：复用 provider 前缀缓存，
+      // 使摘要调用本身的输入大部分走缓存价）
+      const instruction = incremental
+        ? 'Update the rolling summary for the AI coding agent whose work is shown above. Append a concise delta ' +
+          '(markdown, ≤200 words) covering only NEW information: decisions, workspace changes (exact paths), ' +
+          'findings, updated next steps. Do not repeat what is already summarized. ' +
+          'Preserve exact file paths and numbers. Write in the conversation language. Output ONLY the update.'
+        : 'Compress the conversation above (everything before this message) into a summary with EXACTLY these ' +
+          'markdown sections:\n## Primary Request — the user\'s original task & constraints\n' +
+          '## Key Decisions & Findings\n## Workspace State — files (exact paths) + purpose, todos\n' +
+          '## Errors & Fixes\n## Pending Jobs\n## Current Work — what was in flight at the end\n' +
+          '## Next Step\n## Critical Context — numbers, names, URLs that must survive verbatim\n' +
+          'Rules: ≤500 words; preserve exact file paths and numbers; write in the conversation language. ' +
+          'Output ONLY the summary.'
       let summary = ''
       for await (const chunk of client.streamChat({
-        messages: [
-          {
-            role: 'system',
-            content: incremental
-              ? 'You maintain a rolling summary for an AI coding agent continuing work in a browser harness. ' +
-                'Below is a DELTA of recent conversation. Append a concise update (markdown, ≤200 words) covering: ' +
-                'decisions, workspace changes (exact paths), new findings, updated next steps. ' +
-                'Do not repeat what is already summarized; preserve exact file paths and numbers. ' +
-                'Write in the conversation language. Output ONLY the update.'
-              : 'You compress conversation history for an AI coding agent that will continue this work in a browser harness. ' +
-                'Write a dense, factual summary (markdown, ≤500 words) with sections: ' +
-                '1) Original task & constraints  2) Key decisions & findings  3) Current workspace state (file paths + purpose, todos)  ' +
-                '4) Open threads & next steps. Preserve exact file paths, names and numbers. ' +
-                'Write in the conversation language. Output ONLY the summary.',
-          },
-          ...headView,
-        ],
+        messages: [...headView, { role: 'user', content: instruction }],
       })) {
         if (chunk.content) summary += chunk.content
       }
       summary = summary.trim()
       if (!summary) return false
+      // 收敛校验（DSH 思想）：摘要必须显著小于被替换段，否则压缩无意义
+      const segChars = estimateChars(segment)
+      if (segChars > 2_000 && summary.length > segChars * 0.6) {
+        console.warn('[tim-harness] 压缩摘要未收敛，放弃本次压缩')
+        return false
+      }
       const merged = incremental ? (prev!.summary + '\n\n## 增量更新\n' + summary).slice(-12_000) : summary
       s.compacted = { summary: merged, foldedCount: lastUser, createdAt: prev?.createdAt ?? Date.now(), model: provider.model }
       this.recordOp(s, 'compact', lastUser, `${lastUser - segStart} messages folded (${incremental ? 'incremental' : 'full'})`)
