@@ -47,6 +47,8 @@ npm run dev        # http://localhost:5188
 | 多轮工具调用 | 12 个工具：`ls / read_file / write_file / edit_file / grep / glob / run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user` |
 | 虚拟工作区 | OPFS 持久化文件系统（刷新不丢），支持导入/导出/下载 |
 | 代码沙箱 | Web Worker 隔离执行，console 捕获，死循环 1.5s 内强制终止 |
+| HTML 实时预览 | 沙箱 iframe + 控制台捕获与分级过滤，智能体写入自动刷新；大窗预览支持设备尺寸预设（375/768/1280）、新标签打开、Esc 关闭 |
+| 可调工作区 | 右侧面板左缘可拖拽调宽（280–720px，自动记忆），便于动态观察生成中的页面 |
 | 子代理 | `spawn_agent` 派生独立上下文的子任务，节省主会话上下文 |
 | 任务清单 | 智能体用 `todo_write` 维护计划，右侧面板实时投影 |
 | 流式渲染 | 内容/思考链/工具调用全程流式，可随时停止 |
