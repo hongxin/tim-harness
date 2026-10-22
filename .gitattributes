@@ -1,0 +1,21 @@
+# 统一换行策略，保证 macOS/Windows/CI 之间的一致性
+* text=auto eol=lf
+
+# 明确二进制类型（不参与换行/差异归一化）
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.mp4 binary
+*.wasm binary
+
+# 常见源码显式声明
+*.ts text
+*.tsx text
+*.css text
+*.html text
+*.json text
+*.md text
+*.mjs text
