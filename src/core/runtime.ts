@@ -25,6 +25,7 @@ import { buildSystemPrompt } from './agent/prompts'
 import { deriveTitle, newSession } from './session/session'
 import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
+import { buildContextView } from './agent/context'
 import { genId, normalizePath } from './util/path'
 
 export type RuntimeStatus = 'idle' | 'running'
@@ -35,6 +36,18 @@ export interface PendingAsk {
   options?: { label: string; description?: string }[]
 }
 
+export interface PendingApproval {
+  id: string
+  tool: string
+  summary: string
+}
+
+export interface ContextInfo {
+  estChars: number
+  budgetChars: number
+  masked: boolean
+}
+
 export interface RuntimeSnapshot {
   rev: number
   status: RuntimeStatus
@@ -43,6 +56,10 @@ export interface RuntimeSnapshot {
   session: SessionModel | null
   draft: AssistantDraft | null
   ask: PendingAsk | null
+  /** 审批缝：写类工具等待用户批准 */
+  approval: PendingApproval | null
+  /** 上下文水位（估算字符量 / 预算 / 是否已折叠） */
+  contextInfo: ContextInfo | null
   settings: AppSettings | null
   lastError: string | null
   providerLabel: string | null
@@ -97,6 +114,10 @@ export class HarnessRuntime {
   private draft: AssistantDraft | null = null
   private ask: PendingAsk | null = null
   private askResolve: ((answer: string) => void) | null = null
+  private approval: PendingApproval | null = null
+  private approvalResolve: ((d: 'allow' | 'deny') => void) | null = null
+  /** 每会话已批准的写类工具（risky 级：问一次，会话内记住） */
+  private approvedToolsBySession = new Map<string, Set<string>>()
   private lastError: string | null = null
   private subagentNote: string | null = null
   private abortController: AbortController | null = null
@@ -125,6 +146,11 @@ export class HarnessRuntime {
 
   private buildSnapshot(): RuntimeSnapshot {
     const provider = this.activeProvider()
+    let contextInfo: ContextInfo | null = null
+    if (this.session) {
+      const info = buildContextView(this.session.messages).info
+      contextInfo = { estChars: info.estChars, budgetChars: info.budgetChars, masked: info.masked }
+    }
     return {
       rev: this.rev,
       status: this.status,
@@ -133,6 +159,8 @@ export class HarnessRuntime {
       session: this.session,
       draft: this.draft,
       ask: this.ask,
+      approval: this.approval,
+      contextInfo,
       settings: this.settings,
       lastError: this.lastError,
       providerLabel: provider ? `${provider.name} · ${modelLabel(provider.model)}` : null,
@@ -176,6 +204,7 @@ export class HarnessRuntime {
           migrated = true
         }
       }
+      if (!stored.toolApproval) stored.toolApproval = 'off'
       this.settings = stored
       if (migrated) await this.deps.kv.set(K_SETTINGS, stored)
     } else {
@@ -184,6 +213,7 @@ export class HarnessRuntime {
         activeProviderId: 'deepseek',
         proxyTemplate: '',
         webSearch: null,
+        toolApproval: 'off',
       }
     }
     await this.loadSessions()
@@ -250,6 +280,7 @@ export class HarnessRuntime {
     if (this.status === 'running' && this.session?.id === id) return
     await this.deps.kv.delete(K_SESSION(id))
     this.readFilesBySession.delete(id)
+    this.approvedToolsBySession.delete(id)
     this.sessions = this.sessions.filter((s) => s.id !== id)
     if (this.session?.id === id) {
       this.session = null
@@ -325,7 +356,7 @@ export class HarnessRuntime {
       client,
       registry,
       maxIterations: this.deps.maxIterations,
-      buildSystemPrompt: () => this.systemPrompt(),
+      buildSystemPrompt: (masked) => this.systemPrompt(masked),
       buildContext: (signal) => this.buildContext(this.session!, signal),
       onEvent: (e) => this.onAgentEvent(e),
       onDraft: (d) => {
@@ -340,12 +371,20 @@ export class HarnessRuntime {
     this.status = 'idle'
     this.abortController = null
     this.draft = null
-    // 中止时若仍有挂起的 ask_user，释放并清理（其工具结果已由日志配平补齐）
-    if (!result.ok && this.ask) {
-      const resolve = this.askResolve
-      this.ask = null
-      this.askResolve = null
-      resolve?.('')
+    // 中止时若仍有挂起的 ask_user / 审批，释放并清理（其工具结果已由日志配平补齐）
+    if (!result.ok) {
+      if (this.ask) {
+        const resolveAsk = this.askResolve
+        this.ask = null
+        this.askResolve = null
+        resolveAsk?.('')
+      }
+      if (this.approval) {
+        const resolveApproval = this.approvalResolve
+        this.approval = null
+        this.approvalResolve = null
+        resolveApproval?.('deny')
+      }
     }
     if (!result.ok && result.error && !result.aborted) {
       this.lastError = result.error
@@ -401,6 +440,7 @@ export class HarnessRuntime {
             subagent: { run: async () => ({ ok: false, report: '子代理不能再派生子代理' }) },
             ui: {
               askUser: async () => '(子代理无权向用户提问，请自行决策)',
+              approve: (toolName, summary) => this.approveBridge(subSession.id, toolName, summary),
             },
             state: {
               session: subSession,
@@ -437,14 +477,49 @@ export class HarnessRuntime {
     }
   }
 
-  private systemPrompt(): string {
-    return buildSystemPrompt({
+  private systemPrompt(masked?: boolean): string {
+    const base = buildSystemPrompt({
       now: this.deps.now?.() ?? new Date(),
       timezone: this.timezone(),
       todos: this.session?.todos ?? [],
       hasSearchProvider: !!this.settings?.webSearch?.apiKey,
       hasProxy: !!this.settings?.proxyTemplate?.trim(),
     })
+    if (!masked) return base
+    return (
+      base +
+      '\n\n# Context budget notice\n' +
+      'To fit the context budget, some older tool outputs in this conversation have been folded into short summaries ' +
+      'and the oldest turn blocks may have been dropped from the view. The session record on disk is complete and ' +
+      'unchanged; workspace files are untouched. If you need the full content of a folded result, simply re-run that tool.'
+    )
+  }
+
+  /** 审批桥（JetBot Permission 思想）：risky 级工具批准一次，会话内记住 */
+  private approveBridge = (sessionId: string, toolName: string, summary: string): Promise<'allow' | 'deny'> =>
+    new Promise<'allow' | 'deny'>((resolve) => {
+      let set = this.approvedToolsBySession.get(sessionId)
+      if (!set) {
+        set = new Set()
+        this.approvedToolsBySession.set(sessionId, set)
+      }
+      if (set.has(toolName)) return resolve('allow')
+      const id = genId('appr_')
+      this.approval = { id, tool: toolName, summary }
+      this.approvalResolve = (d) => {
+        if (d === 'allow') set!.add(toolName)
+        resolve(d)
+      }
+      this.notify()
+    })
+
+  answerApproval(id: string, decision: 'allow' | 'deny'): void {
+    if (this.approval?.id !== id) return
+    this.approval = null
+    const resolve = this.approvalResolve
+    this.approvalResolve = null
+    this.notify()
+    resolve?.(decision)
   }
 
   private buildContext(session: SessionModel, signal: AbortSignal): ToolContext {
@@ -467,6 +542,7 @@ export class HarnessRuntime {
             this.askResolve = resolve
             this.notify()
           }),
+        approve: (toolName, summary) => this.approveBridge(session.id, toolName, summary),
       },
       state: {
         session,
@@ -530,6 +606,62 @@ export class HarnessRuntime {
       null,
       2,
     )
+  }
+
+  /** 会话转录导出为 Markdown（便于分享/归档） */
+  exportSessionMarkdown(): string {
+    const s = this.session
+    if (!s) return ''
+    const lines: string[] = []
+    lines.push(`# ${s.title}`)
+    lines.push('')
+    lines.push(`> Tim Harness 会话转录 · ${new Date(s.createdAt).toLocaleString('zh-CN', { hour12: false })} 创建 · 模型 ${s.model ?? '-'}`)
+    if (s.usage.total_tokens) lines.push(`> 累计 ${s.usage.total_tokens.toLocaleString()} tokens`)
+    lines.push('')
+    for (const m of s.messages) {
+      if (m.role === 'user') {
+        lines.push('## 🧑 用户')
+        lines.push('')
+        lines.push(m.content ?? '')
+        lines.push('')
+      } else if (m.role === 'assistant') {
+        if (m.reasoningContent) {
+          lines.push('<details><summary>思考过程</summary>')
+          lines.push('')
+          lines.push('```')
+          lines.push(m.reasoningContent.slice(0, 4000))
+          lines.push('```')
+          lines.push('')
+          lines.push('</details>')
+          lines.push('')
+        }
+        if (m.content && m.content.trim()) {
+          lines.push('## 🤖 助手')
+          lines.push('')
+          lines.push(m.content)
+          lines.push('')
+        }
+      } else if (m.role === 'tool') {
+        const status = m.toolOk === false ? '✗ 失败' : '✓'
+        const dur = m.durationMs != null ? ` · ${(m.durationMs / 1000).toFixed(1)}s` : ''
+        lines.push(`**工具 \`${m.name}\`** ${status}${dur}`)
+        lines.push('')
+        const out = (m.content ?? '').slice(0, 2000)
+        lines.push('```')
+        lines.push(out)
+        lines.push('```')
+        lines.push('')
+      }
+    }
+    if (s.todos.length > 0) {
+      lines.push('## 📋 最终任务清单')
+      lines.push('')
+      for (const t of s.todos) {
+        lines.push(`- [${t.status === 'completed' ? 'x' : ' '}] ${t.content}`)
+      }
+      lines.push('')
+    }
+    return lines.join('\n')
   }
 
   async importSession(json: string): Promise<boolean> {

@@ -185,11 +185,37 @@ export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; 
         {tab === 'data' && (
           <div className="settings-body">
             <div className="form-block">
+              <div className="form-block-title">工具审批</div>
+              <p className="form-desc">
+                开启后，智能体的写操作（write_file / edit_file）执行前会弹出审批卡片，经你允许才落盘；
+                同类操作允许一次后本会话内不再询问。默认关闭以保持流畅。
+              </p>
+              <div className="seg">
+                {(['off', 'on'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`seg-btn ${(draft.toolApproval ?? 'off') === v ? 'on' : ''}`}
+                    onClick={() => update((d) => { d.toolApproval = v })}
+                  >
+                    {v === 'off' ? '关闭（默认）' : '开启审批'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-block">
               <div className="form-block-title">会话数据</div>
               <p className="form-desc">所有会话、设置、密钥与工作区文件仅保存在本机浏览器（IndexedDB / OPFS），不经过任何服务器。</p>
               <div className="form-actions">
                 <button type="button" className="btn-ghost btn-sm" onClick={() => void exportSessionJson()}>
-                  导出当前会话 JSON
+                  导出会话 JSON
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => downloadText(`tim-session-${Date.now()}.md`, runtime.exportSessionMarkdown(), 'text/markdown')}
+                >
+                  导出会话 Markdown
                 </button>
                 <button type="button" className="btn-ghost btn-sm" onClick={() => setImportOpen(true)}>
                   导入会话 JSON

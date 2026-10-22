@@ -185,6 +185,50 @@ const ghStar = await page.getAttribute('.gh-star', 'href')
 if (!ghStar || !ghStar.includes('stargazers')) throw new Error('Star 链接异常: ' + ghStar)
 console.log('✓ GitHub 入口与 Star 引导（空态）')
 
+// 9.5 拖拽导入（JetBot FileBridge DropZone）
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  rt.session.messages.length = 0
+  rt.notify()
+})
+await page.evaluate(async () => {
+  const dt = new DataTransfer()
+  dt.items.add(new File(['拖拽导入的测试内容 drop-test'], 'drop-test.txt', { type: 'text/plain' }))
+  window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true }))
+  window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true }))
+})
+await page.waitForTimeout(500)
+const dropped = await page.evaluate(async () => {
+  const rt = window.__TIM_RUNTIME__
+  const all = await rt.fsAdapter.listAll()
+  return all.some((f) => f.path === '/drop-test.txt')
+    ? await rt.fsAdapter.readFile('/drop-test.txt')
+    : null
+})
+if (dropped !== '拖拽导入的测试内容 drop-test') throw new Error('拖拽导入失败: ' + dropped)
+console.log('✓ 拖拽导入：文件落入虚拟工作区并可读回')
+
+// 9.6 上下文水位 + 错误工具卡自动展开（注入式验证）
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  const s = rt.getSnapshot().session
+  s.messages.push({ role: 'user', content: '长会话模拟' })
+  s.messages.push({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id: 'cx1', name: 'grep', arguments: '{"pattern":"x"}' }],
+  })
+  s.messages.push({ role: 'tool', tool_call_id: 'cx1', name: 'grep', args: '{"pattern":"x"}', toolOk: false, durationMs: 12, content: 'Error: 正则不合法（注入测试）' })
+  s.messages.push({ role: 'assistant', content: 'x'.repeat(60_000) })
+  rt.notify()
+})
+await page.waitForTimeout(400)
+const ctxChip = await page.textContent('.ctx-chip').catch(() => null)
+if (!ctxChip || !ctxChip.includes('上下文')) throw new Error('上下文水位芯片未显示: ' + ctxChip)
+const errCardOpen = await page.locator('.toolcard-err .toolcard-body').count()
+if (errCardOpen < 1) throw new Error('失败工具卡未自动展开')
+console.log(`✓ 上下文水位芯片（${ctxChip.trim()}）+ 失败工具卡自动展开`)
+
 // 10. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')

@@ -33,6 +33,8 @@ export function Composer({
   }
 
   const est = snapshot.session ? Math.round(((snapshot.session.usage.total_tokens ?? 0)) ) : 0
+  const ctx = snapshot.contextInfo
+  const ctxPct = ctx ? Math.min(100, Math.round((ctx.estChars / ctx.budgetChars) * 100)) : 0
 
   return (
     <div className="composer-wrap">
@@ -78,7 +80,17 @@ export function Composer({
       </div>
       <div className="composer-meta">
         <span>{running ? '智能体运行中 · 工具调用与结果实时展示在上方' : '支持多轮工具调用 · 虚拟工作区 · JS 沙箱 · 子代理'}</span>
-        {est > 0 && <span className="token-chip">{est.toLocaleString()} tokens</span>}
+        <span className="meta-chips">
+          {ctx && ctx.estChars > 30_000 && (
+            <span
+              className={`ctx-chip ${ctx.masked ? 'ctx-masked' : ctxPct > 80 ? 'ctx-high' : ''}`}
+              title={`上下文估算 ${ctx.estChars.toLocaleString()} / ${ctx.budgetChars.toLocaleString()} 字符${ctx.masked ? '，已自动折叠早期工具输出（完整记录保留在会话中）' : ''}`}
+            >
+              上下文 {ctxPct}%{ctx.masked ? ' · 已折叠' : ''}
+            </span>
+          )}
+          {est > 0 && <span className="token-chip">{est.toLocaleString()} tokens</span>}
+        </span>
       </div>
     </div>
   )
@@ -120,6 +132,29 @@ export function AskUserCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot; 
         </button>
         <button type="button" className="btn-primary" disabled={!text.trim()} onClick={() => answer(text.trim())}>
           回答
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** 审批卡片（JetBot Permission 桥）：写类工具执行前的用户批准 */
+export function ApprovalCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const approval = snapshot.approval
+  if (!approval) return null
+  return (
+    <div className="approval-card">
+      <div className="ask-q">
+        <span className="approval-badge">审批</span>
+        智能体请求执行写操作：<code className="approval-summary">{approval.summary}</code>
+      </div>
+      <div className="ask-input-row">
+        <span className="approval-hint">允许后本会话内同类操作不再询问</span>
+        <button type="button" className="btn-ghost" onClick={() => runtime.answerApproval(approval.id, 'deny')}>
+          拒绝
+        </button>
+        <button type="button" className="btn-primary" onClick={() => runtime.answerApproval(approval.id, 'allow')}>
+          ✓ 允许
         </button>
       </div>
     </div>

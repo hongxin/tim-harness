@@ -108,6 +108,8 @@ export interface AppSettings {
    */
   proxyTemplate: string
   webSearch: WebSearchSetting | null
+  /** 工具审批缝：'on' 时写类工具（write_file/edit_file）需用户批准（JetBot Permission 桥思想） */
+  toolApproval?: 'off' | 'on'
 }
 
 /* ---------------- 会话 ---------------- */

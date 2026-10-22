@@ -1,4 +1,4 @@
-/** 工具调用卡片：状态、参数摘要、可展开详情 */
+/** 工具调用卡片：状态、参数摘要、可展开详情（成功默认折叠、失败自动展开） */
 import { useState } from 'react'
 import type { ChatMessage } from '../../core/types'
 
@@ -45,7 +45,7 @@ function argSummary(name: string, argsRaw?: string): string {
 }
 
 export function ToolCallCard({ msg }: { msg: ChatMessage }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(msg.toolOk === false) // 静默成功、喧哗失败
   const ok = msg.toolOk
   const dur = msg.durationMs != null ? (msg.durationMs < 1000 ? `${msg.durationMs}ms` : `${(msg.durationMs / 1000).toFixed(1)}s`) : ''
   const glyph = TOOL_GLYPHS[msg.name ?? ''] ?? '·'

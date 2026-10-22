@@ -22,9 +22,29 @@ import type { ToolContext } from '../ports'
 import type { LLMClient } from '../llm/client'
 import type { ToolRegistry } from '../tools/registry'
 import { repairTrailingToolCalls } from '../session/repair'
+import { buildContextView } from './context'
 
 export const DEFAULT_MAX_ITERATIONS = 24
 export const DEFAULT_TOOL_TIMEOUT_MS = 120_000
+
+/** 需审批的写类工具（risky 级：批准一次，本会话记住） */
+export const APPROVAL_TOOLS = new Set(['write_file', 'edit_file'])
+
+function approvalSummary(name: string, args: Record<string, unknown>): string {
+  const p = typeof args.path === 'string' ? args.path : ''
+  return p ? `${name} → ${p}` : name
+}
+
+async function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T | 'aborted'> {
+  return Promise.race([
+    p,
+    new Promise<'aborted'>((resolve) => {
+      const onAbort = () => resolve('aborted')
+      if (signal.aborted) onAbort()
+      else signal.addEventListener('abort', onAbort, { once: true })
+    }),
+  ])
+}
 
 export interface RunTurnResult {
   ok: boolean
@@ -36,7 +56,8 @@ export interface RunTurnResult {
 export interface AgentRunnerDeps {
   client: LLMClient
   registry: ToolRegistry
-  buildSystemPrompt: () => string
+  /** masked=true 表示本轮上下文视图发生了折叠/丢块（系统提示注入说明） */
+  buildSystemPrompt: (masked?: boolean) => string
   buildContext: (signal: AbortSignal) => ToolContext
   maxIterations?: number
   onEvent?: (e: AgentEvent) => void
@@ -94,9 +115,11 @@ export class AgentRunner {
     for (let iteration = 1; iteration <= this.maxIterations + 1; iteration++) {
       if (signal.aborted) throw new DOMException('aborted', 'AbortError')
       const forced = iteration === this.maxIterations + 1
+      // 上下文预算视图：会话日志不动，只折叠发给模型的旧工具结果（DSH surface 思想）
+      const view = buildContextView(session.messages)
       const messages: ChatMessage[] = [
-        { role: 'system', content: this.deps.buildSystemPrompt() },
-        ...session.messages,
+        { role: 'system', content: this.deps.buildSystemPrompt(view.info.masked) },
+        ...view.messages,
       ]
       if (forced) {
         messages.push({
@@ -250,6 +273,16 @@ export class AgentRunner {
       }
     }
     const timeoutMs = tool.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS
+    // 审批缝（可选）：写类工具在设置开启时经用户批准（DSH pre-execute / JetBot Permission 桥）
+    if (ctx.state.settings?.toolApproval === 'on' && APPROVAL_TOOLS.has(call.name) && ctx.ui.approve) {
+      const decision = await raceAbort(ctx.ui.approve(call.name, approvalSummary(call.name, args)), ctx.signal)
+      if (decision !== 'allow') {
+        return {
+          ok: false,
+          output: `用户拒绝了 ${call.name} 操作。请询问用户意图或调整方案；不要以完全相同的参数原样重试。`,
+        }
+      }
+    }
     // 三个出口：正常完成 / 超时 / 用户中止（中止必须能打断任何挂起的工具，如 ask_user）
     const timeoutP = new Promise<ToolResult>((_, reject) => {
       const t = setTimeout(

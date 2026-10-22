@@ -416,4 +416,112 @@ const FINAL = () => [
   assert(runtime4.getSnapshot().settings!.providers[0].model === 'my-custom-model', '模型迁移：用户自定义模型名不受影响')
 }
 
+/* ---------------- 8. 上下文预算视图（JetBot ContextManager 思想） ---------------- */
+
+{
+  const { buildContextView, estimateChars } = await import('../src/core/agent/context')
+  const mkTurn = (i: number) => [
+    { role: 'user', content: `任务 ${i}` },
+    {
+      role: 'assistant',
+      content: null,
+      tool_calls: [{ id: `c${i}`, name: i % 2 === 0 ? 'read_file' : 'ls', arguments: `{"path":"f${i}"}` }],
+    },
+    {
+      role: 'tool',
+      tool_call_id: `c${i}`,
+      name: i % 2 === 0 ? 'read_file' : 'ls',
+      content: i % 5 === 0 ? 'dir a\ndir b\ndir a\ndir b\n' : 'x'.repeat(8_000), // ls 短结果=项目地图
+      toolOk: i % 7 === 0 ? false : true,
+    },
+    { role: 'assistant', content: `第 ${i} 轮完成。` },
+  ]
+  const msgs: any[] = []
+  for (let i = 0; i < 40; i++) msgs.push(...mkTurn(i))
+
+  const small = buildContextView(msgs.slice(0, 4), 1_000_000)
+  assert(small.messages.length === 4 && !small.info.masked, '上下文：未超预算走快路径')
+
+  const view = buildContextView(msgs, 60_000)
+  assert(view.info.masked, '上下文：超预算触发折叠视图')
+  assert(
+    estimateChars(view.messages) <= 60_000 * 1.03,
+    `上下文：视图降至预算内（${estimateChars(view.messages)} chars）`,
+  )
+  const longResults = msgs.filter((m: any) => m.role === 'tool' && m.content.length === 8_000).length
+  assert(
+    msgs.length === 160 && longResults === 32,
+    `上下文：原会话日志不被改动（${msgs.length} 条 / ${longResults} 条长结果）`,
+  )
+
+  const toolMsgs = view.messages.filter((m: any) => m.role === 'tool')
+  assert(
+    toolMsgs.slice(-4).every((m: any) => !m.content.includes('[Result masked')),
+    '上下文：最近 4 条工具结果保持全文',
+  )
+  assert(toolMsgs.some((m: any) => m.content.includes('[Result masked')), '上下文：旧的长结果被折叠为摘要')
+  assert(
+    view.messages.some((m: any) => m.role === 'tool' && m.name === 'ls' && m.content.includes('dir a')),
+    '上下文：ls 项目地图短结果豁免折叠',
+  )
+  const answeredIds = new Set(view.messages.filter((m: any) => m.role === 'tool').map((m: any) => m.tool_call_id))
+  assert(
+    view.messages
+      .filter((m: any) => m.role === 'assistant' && m.tool_calls)
+      .every((m: any) => m.tool_calls.every((tc: any) => answeredIds.has(tc.id))),
+    '上下文：视图满足 API 配平约束',
+  )
+}
+
+/* ---------------- 9. 审批缝（拒绝 → 允许 → 会话记忆） ---------------- */
+
+{
+  async function waitCond(fn: () => boolean, ms = 4_000): Promise<void> {
+    const t0 = Date.now()
+    while (!fn()) {
+      if (Date.now() - t0 > ms) throw new Error('waitCond 超时')
+      await new Promise((r) => setTimeout(r, 20))
+    }
+  }
+  const kv = new MapKV()
+  const fs = new TestFS()
+  const wf = (id: string) => [
+    toolCallChunk(id, 'write_file', '{"path":"/a.md","content":"A"}', true),
+    sse({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }),
+  ]
+  const scripts: string[][] = [wf('k1'), wf('k2'), wf('k3'), FINAL()]
+  const runtime5 = new HarnessRuntime({
+    kv,
+    fs,
+    transport: new ScriptedTransport(scripts),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await runtime5.boot()
+  await runtime5.saveSettings({
+    providers: [{ id: 'mock', name: 'Mock', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'mock-1' }],
+    activeProviderId: 'mock',
+    proxyTemplate: '',
+    webSearch: null,
+    toolApproval: 'on',
+  })
+  const turn = runtime5.send('写 a.md')
+  await waitCond(() => runtime5.getSnapshot().approval !== null)
+  runtime5.answerApproval(runtime5.getSnapshot().approval!.id, 'deny')
+  await waitCond(() => runtime5.getSnapshot().approval !== null)
+  runtime5.answerApproval(runtime5.getSnapshot().approval!.id, 'allow')
+  await turn
+  const s5 = runtime5.getSnapshot()
+  const toolResults = s5.session!.messages.filter((m) => m.role === 'tool' && m.name === 'write_file')
+  assert(toolResults.length === 3, `审批：三次 write_file 调用全部落账（${toolResults.length}）`)
+  assert(toolResults[0].content!.includes('用户拒绝'), '审批：拒绝产生明确错误结果')
+  assert(
+    toolResults[1].content!.includes('已写入') && toolResults[2].content!.includes('已写入'),
+    '审批：允许后两次写入成功',
+  )
+  assert(fs.files.get('/a.md') === 'A', '审批：文件实际写入')
+  const denyCount = toolResults.filter((m) => m.content!.includes('用户拒绝')).length
+  assert(denyCount === 1, '审批：会话内记忆生效（仅第一次被拒）')
+  assert(s5.approval === null, '审批：结束无残留挂起卡片')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

@@ -65,6 +65,11 @@ export interface SubagentRunner {
 /** 与用户的交互端口（浏览器: UI 卡片；小程序: 交互组件；headless: 自动应答） */
 export interface UIInteractions {
   askUser(question: string, options?: { label: string; description?: string }[]): Promise<string>
+  /**
+   * 审批缝（可选）：写类工具执行前的用户批准。
+   * 返回 'allow' 放行，'deny' 拒绝（会话内记忆由实现负责）。
+   */
+  approve?(toolName: string, summary: string): Promise<'allow' | 'deny'>
 }
 
 /**

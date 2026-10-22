@@ -52,6 +52,9 @@ npm run dev        # http://localhost:5188
 | Code sandbox | Isolated Web Worker execution with console capture; infinite loops terminated in ~1.5s |
 | Live HTML preview | Sandboxed iframe + console capture with level filters; auto-refreshes when the agent writes. Big view adds device width presets (375/768/1280), open-in-new-tab, Esc to close |
 | Resizable workspace | Drag the panel's left edge to widen it (280–720px, remembered) — handy for watching pages as they are being generated |
+| Context management | Three-layer budget strategy: old tool outputs auto-folded (last 4 kept full, ls/grep/glob "project map" exempt); live context gauge above the input; long sessions never overflow |
+| Tool approval (optional) | When enabled in settings, write operations require a human approval (once per session) |
+| Drag & drop | Drop files anywhere to import them into the workspace; tool cards "quiet on success, loud on failure" |
 | Sub-agents | `spawn_agent` runs self-contained tasks in a fresh context to conserve the main conversation |
 | Task list | The agent maintains its plan with `todo_write`, projected live in the side panel |
 | Streaming | Content / reasoning / tool calls all stream in real time; stop at any moment |

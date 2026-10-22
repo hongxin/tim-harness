@@ -1,12 +1,13 @@
-/** 应用外壳：布局与全局状态（设置开关 / 右面板宽度拖拽 / 主题） */
+/** 应用外壳：布局与全局状态（设置开关 / 右面板宽度拖拽 / 拖拽导入 / 主题） */
 import { useEffect, useState } from 'react'
 import { useRuntime, useRuntimeHost } from './store'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { ChatView } from './components/ChatView'
-import { AskUserCard, Composer } from './components/Composer'
+import { ApprovalCard, AskUserCard, Composer } from './components/Composer'
 import { RightPanel } from './components/RightPanel'
 import { SettingsDialog } from './components/SettingsDialog'
+import { looksBinary, readFileAsBytes, readFileAsText } from './fileops'
 
 function BootSplash() {
   return (
@@ -44,10 +45,54 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
   const [rightOpen, setRightOpen] = useState(true)
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'dark')
   const [rpWidth, setRpWidth] = useState(loadRightPanelWidth)
+  const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     if (window.innerWidth < 1100) setRightOpen(false)
   }, [])
+
+  /* 全窗口拖拽导入（JetBot FileBridge DropZone） */
+  useEffect(() => {
+    let depth = 0
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return
+      depth++
+      setDragOver(true)
+    }
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes('Files')) e.preventDefault()
+    }
+    const onDragLeave = () => {
+      depth = Math.max(0, depth - 1)
+      if (depth === 0) setDragOver(false)
+    }
+    const onDrop = async (e: DragEvent) => {
+      if (!e.dataTransfer?.files?.length) return
+      e.preventDefault()
+      depth = 0
+      setDragOver(false)
+      const items: { path: string; content: string | Uint8Array }[] = []
+      for (const f of Array.from(e.dataTransfer.files)) {
+        try {
+          const content = looksBinary(f.name) ? await readFileAsBytes(f) : await readFileAsText(f)
+          items.push({ path: '/' + f.name, content })
+        } catch {
+          /* 跳过读不了的文件 */
+        }
+      }
+      if (items.length > 0) void runtime.importWorkspaceFiles(items)
+    }
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [runtime])
 
   // 宽度持久化（记忆用户偏好）
   useEffect(() => {
@@ -84,7 +129,16 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
       <main className="mainpane">
         <TopBar snapshot={snapshot} runtime={runtime} rightOpen={rightOpen} onToggleRight={() => setRightOpen((v) => !v)} />
         <ChatView snapshot={snapshot} runtime={runtime} />
-        <Composer snapshot={snapshot} runtime={runtime} askSlot={<AskUserCard snapshot={snapshot} runtime={runtime} />} />
+        <Composer
+          snapshot={snapshot}
+          runtime={runtime}
+          askSlot={
+            <>
+              <ApprovalCard snapshot={snapshot} runtime={runtime} />
+              <AskUserCard snapshot={snapshot} runtime={runtime} />
+            </>
+          }
+        />
       </main>
       {rightOpen && (
         <RightPanel
@@ -97,6 +151,15 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
         />
       )}
       {settingsOpen && <SettingsDialog runtime={runtime} onClose={() => setSettingsOpen(false)} />}
+      {dragOver && (
+        <div className="dropzone-overlay">
+          <div className="dropzone-inner">
+            <div className="dropzone-icon">⤓</div>
+            <div>松开以导入文件到虚拟工作区</div>
+            <div className="dropzone-sub">文本文件可直接读取；二进制文件按字节保存</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
