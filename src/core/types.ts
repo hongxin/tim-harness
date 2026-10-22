@@ -137,6 +137,15 @@ export interface SessionModel {
     createdAt: number
     model?: string
   }
+  /** surface 操作审计日志（append-only；事件溯源精神的审计面） */
+  ops?: SessionOp[]
+}
+
+export interface SessionOp {
+  op: 'compact' | 'edit-truncate' | 'fork' | 'repair' | 'fork-source'
+  at?: number
+  ts: number
+  note?: string
 }
 
 /* ---------------- 事件 ---------------- */

@@ -57,6 +57,8 @@ npm run dev        # http://localhost:5188
 | Context management | Three-layer budget strategy: old tool outputs auto-folded (last 4 kept full, ls/grep/glob "project map" exempt); live context gauge above the input; long sessions never overflow |
 | Compaction ⚡ | The LLM summarizes early messages once; afterwards every turn sends only "summary + recent tail" — tokens are billed on the tail, not the whole history. Manual button + automatic at 80% watermark; the full transcript is never touched |
 | Tool approval (optional) | When enabled in settings, write operations require a human approval (once per session) |
+| Edit & fork | Hover any user message: ✎ edit-and-resend (truncates history), ⑃ fork a new session from that point; full operation audit trail in exports |
+| Dual-channel prompt | Stable system section is byte-identical across turns (provider prefix-cache hits, lower cost); volatile facts arrive as a "supersedes" snapshot at the end |
 | Drag & drop | Drop files anywhere to import them into the workspace; tool cards "quiet on success, loud on failure" |
 | Sub-agents | `spawn_agent` runs self-contained tasks in a fresh context to conserve the main conversation |
 | Task list | The agent maintains its plan with `todo_write`, projected live in the side panel |

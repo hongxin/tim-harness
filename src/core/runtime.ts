@@ -9,6 +9,7 @@ import type {
   AssistantDraft,
   ProviderSetting,
   SessionModel,
+  SessionOp,
   TodoItem,
 } from './types'
 import type {
@@ -21,7 +22,7 @@ import type {
 } from './ports'
 import { LLMClient } from './llm/client'
 import { AgentRunner } from './agent/loop'
-import { buildSystemPrompt } from './agent/prompts'
+import { buildRuntimeSnapshot, buildStablePrompt } from './agent/prompts'
 import { deriveTitle, effectiveMessages, newSession } from './session/session'
 import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
@@ -63,6 +64,8 @@ export interface RuntimeSnapshot {
   contextInfo: ContextInfo | null
   /** 正在执行上下文压缩（LLM 摘要） */
   compacting: boolean
+  /** 编辑用户消息后预填到输入区的文本（一次性） */
+  composerPrefill: string | null
   settings: AppSettings | null
   lastError: string | null
   providerLabel: string | null
@@ -132,6 +135,7 @@ export class HarnessRuntime {
   private writtenBySession = new Map<string, Set<string>>()
   private skills: SkillMeta[] = []
   private compactingFlag = false
+  private composerPrefill: string | null = null
 
   private listeners = new Set<() => void>()
   private snapshot: RuntimeSnapshot
@@ -169,6 +173,7 @@ export class HarnessRuntime {
       approval: this.approval,
       contextInfo,
       compacting: this.compactingFlag,
+      composerPrefill: this.composerPrefill,
       settings: this.settings,
       lastError: this.lastError,
       providerLabel: provider ? `${provider.name} · ${modelLabel(provider.model)}` : null,
@@ -256,8 +261,11 @@ export class HarnessRuntime {
       const s = await this.deps.kv.get<SessionModel>(k)
       if (s && s.id && Array.isArray(s.messages)) {
         // 启动时修复历史会话中的悬空 tool_calls（页面刷新/崩溃留下的不合法序列）
-        if (repairSessionIntegrity(s) > 0) {
+        const fixed = repairSessionIntegrity(s)
+        if (fixed > 0) {
           repaired = true
+          if (!s.ops) s.ops = []
+          s.ops.push({ op: 'repair', ts: Date.now(), note: `${fixed} dangling tool calls` })
           await this.deps.kv.set(k, s)
         }
         sessions.push(s)
@@ -382,7 +390,8 @@ export class HarnessRuntime {
       client,
       registry,
       maxIterations: this.deps.maxIterations,
-      buildSystemPrompt: (masked) => this.systemPrompt(masked),
+      buildStablePrompt: () => this.stablePrompt(),
+      buildSnapshot: (masked) => this.runtimeSnapshot(masked),
       buildContext: (signal) => this.buildContext(this.session!, signal),
       onEvent: (e) => this.onAgentEvent(e),
       onDraft: (d) => {
@@ -491,6 +500,7 @@ export class HarnessRuntime {
       summary = summary.trim()
       if (!summary) return false
       s.compacted = { summary, foldedCount: lastUser, createdAt: Date.now(), model: provider.model }
+      this.recordOp(s, 'compact', lastUser, `${lastUser} messages folded`)
       await this.persistSession()
       this.notify()
       return true
@@ -537,15 +547,8 @@ export class HarnessRuntime {
         client,
         registry,
         maxIterations: 16,
-        buildSystemPrompt: () =>
-          buildSystemPrompt({
-            now: this.deps.now?.() ?? new Date(),
-            timezone: this.timezone(),
-            todos,
-            hasSearchProvider: !!this.settings?.webSearch?.apiKey,
-            hasProxy: !!this.settings?.proxyTemplate?.trim(),
-            skills: this.skills,
-          }),
+        buildStablePrompt: () => this.stablePrompt(),
+        buildSnapshot: () => this.runtimeSnapshot(false),
         buildContext: (signal) => {
           const ctx: ToolContext = {
             fs: this.deps.fs,
@@ -592,8 +595,8 @@ export class HarnessRuntime {
     }
   }
 
-  private systemPrompt(masked?: boolean): string {
-    const base = buildSystemPrompt({
+  private stablePrompt(): string {
+    return buildStablePrompt({
       now: this.deps.now?.() ?? new Date(),
       timezone: this.timezone(),
       todos: this.session?.todos ?? [],
@@ -601,14 +604,82 @@ export class HarnessRuntime {
       hasProxy: !!this.settings?.proxyTemplate?.trim(),
       skills: this.skills,
     })
-    if (!masked) return base
-    return (
-      base +
-      '\n\n# Context budget notice\n' +
-      'To fit the context budget, some older tool outputs in this conversation have been folded into short summaries ' +
-      'and the oldest turn blocks may have been dropped from the view. The session record on disk is complete and ' +
-      'unchanged; workspace files are untouched. If you need the full content of a folded result, simply re-run that tool.'
-    )
+  }
+
+  private runtimeSnapshot(masked?: boolean): string {
+    return buildRuntimeSnapshot({
+      now: this.deps.now?.() ?? new Date(),
+      timezone: this.timezone(),
+      todos: this.session?.todos ?? [],
+      hasSearchProvider: !!this.settings?.webSearch?.apiKey,
+      hasProxy: !!this.settings?.proxyTemplate?.trim(),
+      skills: this.skills,
+      masked,
+      compacted: !!this.session?.compacted,
+    })
+  }
+
+  /* ---------------- Surface 操作（事件溯源精神的审计面） ---------------- */
+
+  private recordOp(session: SessionModel, op: SessionOp['op'], at?: number, note?: string): void {
+    if (!session.ops) session.ops = []
+    session.ops.push({ op, at, ts: Date.now(), note })
+    if (session.ops.length > 100) session.ops = session.ops.slice(-100)
+  }
+
+  /**
+   * 编辑用户消息（surface replace 原语）：截断该消息及其后全部内容，
+   * 原文返回给输入区供修改重发。截断后立即日志配平。
+   */
+  editUserMessage(atIndex: number): string | null {
+    if (this.status === 'running' || !this.session) return null
+    const msgs = this.session.messages
+    if (atIndex < 0 || atIndex >= msgs.length || msgs[atIndex].role !== 'user') return null
+    const text = msgs[atIndex].content ?? ''
+    const removed = msgs.length - atIndex
+    msgs.length = atIndex
+    // 压缩边界若越界则失效（尾部整体被替换）
+    if (this.session.compacted && this.session.compacted.foldedCount >= msgs.length) {
+      this.session.compacted = undefined
+    }
+    repairSessionIntegrity(this.session)
+    this.recordOp(this.session, 'edit-truncate', atIndex, `removed ${removed} messages`)
+    void this.persistSession()
+    this.composerPrefill = text
+    this.notify()
+    return text
+  }
+
+  /** 从某条用户消息处分叉新会话（复制 [0, atIndex]），并切换过去 */
+  async forkSession(atIndex: number, titleSuffix = '（分叉）'): Promise<string | null> {
+    if (this.status === 'running' || !this.session) return null
+    const src = this.session
+    if (atIndex < 0 || atIndex >= src.messages.length || src.messages[atIndex].role !== 'user') return null
+    const forked = newSession()
+    forked.title = src.title.slice(0, 22) + titleSuffix
+    forked.messages = src.messages.slice(0, atIndex + 1).map((m) => ({ ...m }))
+    forked.todos = src.todos.map((t) => ({ ...t }))
+    if (src.compacted && src.compacted.foldedCount < forked.messages.length) {
+      forked.compacted = { ...src.compacted }
+    }
+    this.recordOp(forked, 'fork', atIndex, `from ${src.id} @${atIndex}`)
+    this.recordOp(src, 'fork-source', atIndex, `to ${forked.id}`)
+    // 观测门状态沿用（读过的文件仍算读过）
+    const reads = this.readFilesBySession.get(src.id)
+    if (reads) this.readFilesBySession.set(forked.id, new Set(reads))
+    await this.deps.kv.set(K_SESSION(forked.id), forked)
+    this.sessions.unshift({ id: forked.id, title: forked.title, updatedAt: forked.updatedAt })
+    this.session = forked
+    void this.persistSession()
+    this.notify()
+    return forked.id
+  }
+
+  clearComposerPrefill(): void {
+    if (this.composerPrefill !== null) {
+      this.composerPrefill = null
+      this.notify()
+    }
   }
 
   /** 审批桥（JetBot Permission 思想）：risky 级工具批准一次，会话内记住 */
@@ -776,6 +847,14 @@ export class HarnessRuntime {
       lines.push('')
       for (const t of s.todos) {
         lines.push(`- [${t.status === 'completed' ? 'x' : ' '}] ${t.content}`)
+      }
+      lines.push('')
+    }
+    if (s.ops && s.ops.length > 0) {
+      lines.push('## 🧾 操作审计')
+      lines.push('')
+      for (const op of s.ops.slice(-20)) {
+        lines.push(`- ${new Date(op.ts).toLocaleString('zh-CN', { hour12: false })} · \`${op.op}\`${op.at != null ? ` @${op.at}` : ''}${op.note ? ` · ${op.note}` : ''}`)
       }
       lines.push('')
     }

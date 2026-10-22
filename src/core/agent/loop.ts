@@ -57,8 +57,10 @@ export interface RunTurnResult {
 export interface AgentRunnerDeps {
   client: LLMClient
   registry: ToolRegistry
-  /** masked=true 表示本轮上下文视图发生了折叠/丢块（系统提示注入说明） */
-  buildSystemPrompt: (masked?: boolean) => string
+  /** 稳定段系统提示（跨轮次字节一致 → 命中 provider 前缀缓存） */
+  buildStablePrompt: () => string
+  /** 易变快照（时间/任务/技能/预算状态），置于消息序列末尾 */
+  buildSnapshot: (masked?: boolean) => string
   buildContext: (signal: AbortSignal) => ToolContext
   maxIterations?: number
   onEvent?: (e: AgentEvent) => void
@@ -119,7 +121,7 @@ export class AgentRunner {
       // 上下文预算视图：压缩（摘要+尾部）→ 旧工具结果折叠；会话日志永不改动
       const view = buildContextView(effectiveMessages(session))
       const messages: ChatMessage[] = [
-        { role: 'system', content: this.deps.buildSystemPrompt(view.info.masked) },
+        { role: 'system', content: this.deps.buildStablePrompt() },
         ...view.messages,
       ]
       if (forced) {
@@ -129,6 +131,8 @@ export class AgentRunner {
             '[harness] 已达到工具迭代上限。请不要再调用任何工具，基于已有信息直接给出最终回答。',
         })
       }
+      // 双通道：易变快照永远置于序列末尾（不破坏前缀缓存），supersedes 语义声明仅最新有效
+      messages.push({ role: 'user', content: this.deps.buildSnapshot(view.info.masked) })
 
       emit({ type: 'llm_start', iteration })
       const draft: AssistantDraft = {

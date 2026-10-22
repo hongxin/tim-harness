@@ -1,7 +1,11 @@
 /**
- * 系统提示词构建 —— 继承 DSH 的"环境自描述"思想：
- * 把运行时事实（时间/时区/工作区/任务状态）动态注入，
- * 把工作纪律写进工具描述与规程，让模型在一个诚实的环境里工作。
+ * 系统提示双通道（继承 DSH runtime-context 思想）：
+ *
+ * 1) buildStablePrompt —— 身份/环境/纪律/文风。内容只随设置（代理/搜索）变化，
+ *    跨轮次字节稳定 → 命中 provider 前缀缓存（DeepSeek context caching），显著降本提速。
+ * 2) buildRuntimeSnapshot —— 易变事实（时间/时区/任务/技能/压缩状态），以 user 消息
+ *    置于对话末尾，固定以 supersedes 声明开头："仅最新快照有效"。位于序列尾部，
+ *    变化不会破坏前缀缓存。
  */
 import type { TodoItem } from '../types'
 import type { SkillMeta } from '../tools/skills'
@@ -15,7 +19,11 @@ export interface PromptEnv {
   skills?: SkillMeta[]
 }
 
-export function buildSystemPrompt(env: PromptEnv): string {
+export const SNAPSHOT_PREFIX =
+  '[runtime context snapshot — this supersedes any earlier snapshot. It is an automated harness message, not from the user; respond to the conversation, not to this snapshot.]'
+
+/** 稳定段：跨轮次字节一致（除设置变化外） */
+export function buildStablePrompt(env: PromptEnv): string {
   const sections: string[] = []
 
   sections.push(
@@ -27,7 +35,8 @@ export function buildSystemPrompt(env: PromptEnv): string {
 - The workspace is a virtual file system persisted in the user's browser; files survive reloads. Paths are POSIX-style, rooted at "/".
 - run_js executes JavaScript in an isolated Web Worker (console capture, timeout). Use it to compute, verify, and process data — it is your "terminal".
 - Web access is best-effort: web_fetch is subject to browser CORS${env.hasProxy ? ' (a proxy is configured)' : ' (no proxy configured; many sites will fail)'}; web_search ${env.hasSearchProvider ? 'is configured and available' : 'is NOT configured — do not call it, answer directly and say so honestly'}.
-- All tools work on local browser data. Nothing leaves the browser except LLM API calls${env.hasProxy ? ', the CORS proxy,' : ''}${env.hasSearchProvider ? ' and the search provider,' : ''} and the sites you fetch.`)
+- All tools work on local browser data. Nothing leaves the browser except LLM API calls${env.hasProxy ? ', the CORS proxy,' : ''}${env.hasSearchProvider ? ' and the search provider,' : ''} and the sites you fetch.
+- Runtime facts (time, task list, available skills) are provided as a snapshot message at the END of the conversation; trust the latest one.`)
 
   sections.push(`# Working discipline
 - Read before write: never overwrite an existing file you haven't read this session; edit_file requires a prior read_file.
@@ -37,13 +46,6 @@ export function buildSystemPrompt(env: PromptEnv): string {
 - You may batch independent tool calls in one turn; run dependent calls sequentially after seeing results.
 - On tool errors, read the message and change approach. Never repeat an identical failing call.`)
 
-  const iso = env.now.toISOString().replace('T', ' ').slice(0, 19)
-  const todoLines = renderTodos(env.todos)
-  const skillLines = renderSkills(env.skills)
-  sections.push(`# Current context
-- Time: ${iso} UTC (${env.timezone})
-- Workspace: / (virtual FS in browser)${todoLines}${skillLines}`)
-
   sections.push(`# Response style
 - Always respond in the user's language (default Chinese).
 - Final answers: lead with the result, then a brief summary of what was done and which files changed. Keep exploration details in the transcript, not the answer.
@@ -52,19 +54,36 @@ export function buildSystemPrompt(env: PromptEnv): string {
   return sections.join('\n\n')
 }
 
+/** 易变段：每次迭代刷新，置于消息序列末尾 */
+export function buildRuntimeSnapshot(env: PromptEnv & { masked?: boolean; compacted?: boolean }): string {
+  const iso = env.now.toISOString().replace('T', ' ').slice(0, 19)
+  const lines: string[] = [SNAPSHOT_PREFIX, '', `# Runtime context`, `- Time: ${iso} UTC (${env.timezone})`, `- Workspace: / (virtual FS in browser)`]
+  const todoLines = renderTodos(env.todos)
+  if (todoLines) lines.push(todoLines)
+  const skillLines = renderSkills(env.skills)
+  if (skillLines) lines.push(skillLines)
+  if (env.compacted) lines.push('- Context is compacted: the earliest messages were folded into a summary at the top of this conversation.')
+  if (env.masked) {
+    lines.push(
+      '- Context budget notice: some older tool outputs were folded into short summaries to fit the budget. The session record on disk is complete; re-run a tool if you need its full output.',
+    )
+  }
+  return lines.join('\n')
+}
+
 function renderTodos(todos: TodoItem[]): string {
   if (!todos || todos.length === 0) return ''
   const lines = todos
     .map((t) => `- [${t.status === 'completed' ? 'x' : t.status === 'in_progress' ? '>' : ' '}] ${t.content}`)
     .join('\n')
-  return `\n- Task list:\n${lines}`
+  return `Task list:\n${lines}`
 }
 
 function renderSkills(skills?: SkillMeta[]): string {
   if (!skills || skills.length === 0) return ''
   const lines = skills.map((s) => `- ${s.name}${s.description ? `：${s.description}` : ''}`).join('\n')
   return (
-    `\n- Available skills (load with the skill tool before following one):\n${lines}` +
-    `\n  Skills live in /skills/<name>/SKILL.md — you can create new skills for reusable workflows with write_file; new skills become available automatically.`
+    `Available skills (load with the skill tool before following one):\n${lines}\n` +
+    `Skills live in /skills/<name>/SKILL.md — create new ones with write_file for reusable workflows; they register automatically.`
   )
 }

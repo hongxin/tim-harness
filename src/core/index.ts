@@ -8,7 +8,7 @@ export { AgentRunner, DEFAULT_MAX_ITERATIONS, APPROVAL_TOOLS } from './agent/loo
 export type { AgentRunnerDeps, RunTurnResult } from './agent/loop'
 export { buildContextView, estimateChars, CONTEXT_BUDGET_CHARS } from './agent/context'
 export type { ContextView, ContextViewInfo } from './agent/context'
-export { buildSystemPrompt } from './agent/prompts'
+export { buildStablePrompt, buildRuntimeSnapshot, SNAPSHOT_PREFIX } from './agent/prompts'
 export type { PromptEnv } from './agent/prompts'
 export { newSession, deriveTitle, mergeUsage, estimateTokens } from './session/session'
 export { ToolRegistry } from './tools/registry'

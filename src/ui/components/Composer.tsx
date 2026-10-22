@@ -1,5 +1,5 @@
 /** 输入区：自动增高、Enter 发送、运行中变为停止（仍可预输入下一条） */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
@@ -15,6 +15,17 @@ export function Composer({
 }) {
   const [text, setText] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  // 编辑用户消息 → 一次性预填
+  useEffect(() => {
+    if (snapshot.composerPrefill !== null) {
+      setText(snapshot.composerPrefill)
+      runtime.clearComposerPrefill()
+      taRef.current?.focus()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot.composerPrefill])
+
   const running = snapshot.status === 'running'
 
   const autosize = () => {

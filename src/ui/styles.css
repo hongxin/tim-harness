@@ -280,7 +280,17 @@ code, pre, .mono { font-family: var(--font-mono); }
 
 .msg { min-width: 0; }
 
-.msg-user { display: flex; justify-content: flex-end; }
+.msg-user { display: flex; justify-content: flex-end; align-items: flex-start; gap: 6px; }
+.msg-user-actions {
+  display: inline-flex; gap: 3px; opacity: 0; transition: opacity 0.15s; padding-top: 4px; flex-shrink: 0;
+}
+.msg-user:hover .msg-user-actions { opacity: 1; }
+.msg-action {
+  background: none; border: 1px solid var(--border); color: var(--text-faint);
+  width: 24px; height: 24px; border-radius: 6px; font-size: 12px;
+  display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s;
+}
+.msg-action:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-dim); }
 .msg-user-bubble {
   background: var(--bg-raised);
   border: 1px solid var(--border);

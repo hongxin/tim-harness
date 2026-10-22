@@ -190,6 +190,26 @@ export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
               if (m.role === 'user') {
                 return (
                   <div key={i} className="msg msg-user">
+                    <div className="msg-user-actions">
+                      <button
+                        type="button"
+                        className="msg-action"
+                        title="编辑并重发：截断此消息之后的内容"
+                        onClick={() => runtime.editUserMessage(i)}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="msg-action"
+                        title="从此分叉新会话（保留此前上下文）"
+                        onClick={() => {
+                          if (confirm('从这条消息分叉出新会话？将复制至此为止的上下文。')) void runtime.forkSession(i)
+                        }}
+                      >
+                        ⑃
+                      </button>
+                    </div>
                     <div className="msg-user-bubble">{m.content}</div>
                   </div>
                 )

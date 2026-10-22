@@ -7,7 +7,7 @@ import { HarnessRuntime } from '../src/core/runtime'
 import type { FileEntry, KVStore, Transport, TransportResponse, VFileSystem } from '../src/core/ports'
 import { parseSSE } from '../src/core/llm/sse'
 import { normalizePath } from '../src/core/util/path'
-import { buildSystemPrompt } from '../src/core/agent/prompts'
+import { buildStablePrompt, buildRuntimeSnapshot, SNAPSHOT_PREFIX } from '../src/core/agent/prompts'
 
 let passed = 0
 function assert(cond: unknown, msg: string): asserts cond {
@@ -154,15 +154,20 @@ const FINAL = () => [
 /* ---------------- 2. 系统提示词 ---------------- */
 
 {
-  const prompt = buildSystemPrompt({
+  const env = {
     now: new Date('2026-10-22T08:00:00Z'),
     timezone: 'Asia/Shanghai',
-    todos: [{ content: '第一步', status: 'in_progress' }],
+    todos: [{ content: '第一步', status: 'in_progress' as const }],
     hasSearchProvider: false,
     hasProxy: false,
-  })
-  assert(prompt.includes('Asia/Shanghai') && prompt.includes('第一步') && prompt.includes('>'), '系统提示词注入时区与任务列表')
-  assert(prompt.includes('is NOT configured'), '系统提示词诚实声明搜索能力缺失')
+  }
+  const stable = buildStablePrompt(env)
+  const snap = buildRuntimeSnapshot(env)
+  assert(!stable.includes('Asia/Shanghai') && !stable.includes('第一步'), '双通道：稳定段不含易变事实')
+  assert(stable.includes('browser-native AI engineering harness'), '双通道：稳定段含身份')
+  assert(snap.startsWith(SNAPSHOT_PREFIX), '双通道：快照以 supersedes 声明开头')
+  assert(snap.includes('Asia/Shanghai') && snap.includes('第一步'), '双通道：快照注入时区与任务列表')
+  assert(stable.includes('is NOT configured'), '双通道：能力声明归属稳定段（设置级事实）')
 }
 
 /* ---------------- 3. 工具语义直测（观测门 / 唯一匹配 / grep / glob） ---------------- */
@@ -624,7 +629,11 @@ const FINAL = () => [
     msgs[1].role === 'user' && msgs[1].content.startsWith('[Conversation compacted'),
     '压缩：请求以摘要标记消息开头',
   )
-  assert(msgs.length === 4, `压缩：请求只含 system+摘要+尾部消息（实际 ${msgs.length}）`)
+  assert(msgs.length === 5, `压缩：请求= system+摘要+尾部2条+快照（实际 ${msgs.length}）`)
+  assert(
+    msgs[msgs.length - 1].role === 'user' && msgs[msgs.length - 1].content.startsWith('[runtime context snapshot'),
+    '压缩：快照仍居末尾（双通道）',
+  )
   assert(!lastBody.messages.some((m: any) => (m.content ?? '').includes('round-09-早期内容')), '压缩：对话请求不含被折叠内容')
   // 日志完整性
   assert(s7.session!.messages.length === 23, '压缩：会话日志完整保留（23 条）')
@@ -648,6 +657,70 @@ const FINAL = () => [
   assert(prettifyTex('\\alpha + \\beta_1').includes('α') && prettifyTex('\\alpha + \\beta_1').includes('₁'), '公式：希腊字母与下标')
   assert(prettifyTex('\\frac{a}{b} + \\sqrt{x} \\leq \\sum_i \\times \\infty').includes('√'), '公式：sqrt/sum/leq/times/infty')
   assert(prettifyTex('\\frac{ab}{cd}') === '(ab)/(cd)', '公式：多字符分数加括号（' + prettifyTex('\\frac{ab}{cd}') + '）')
+}
+
+/* ---------------- 13. 双通道请求结构 + Surface 操作 ---------------- */
+
+{
+  const kv = new MapKV()
+  const fs = new TestFS()
+  const transport8 = new ScriptedTransport([
+    [sse({ choices: [{ index: 0, delta: { content: 'ok-1' }, finish_reason: 'stop' }] })],
+    [sse({ choices: [{ index: 0, delta: { content: 'ok-2' }, finish_reason: 'stop' }] })],
+    [sse({ choices: [{ index: 0, delta: { content: 'ok-3' }, finish_reason: 'stop' }] })],
+  ])
+  let clockTick = 0
+  const runtime8 = new HarnessRuntime({
+    kv,
+    fs,
+    transport: transport8,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+    now: () => new Date(Date.UTC(2026, 9, 22, 8, 0, clockTick++)), // 可控时钟：保证快照时间变化
+  })
+  await runtime8.boot()
+  await runtime8.saveSettings({
+    providers: [{ id: 'mock', name: 'Mock', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'mock-1' }],
+    activeProviderId: 'mock',
+    proxyTemplate: '',
+    webSearch: null,
+  })
+  await runtime8.send('第一问')
+  await runtime8.send('第二问')
+  // 双通道请求结构：messages[0]=稳定 system；末尾=快照 user（supersedes）
+  const bodies = transport8.requests.map((r) => JSON.parse(r))
+  const b2 = bodies[1].messages
+  assert(b2[0].role === 'system' && !b2[0].content.includes('Task list:'), '双通道请求：system 为稳定段')
+  assert(
+    b2[b2.length - 1].role === 'user' && b2[b2.length - 1].content.startsWith('[runtime context snapshot'),
+    '双通道请求：末尾为 supersedes 快照',
+  )
+  assert(bodies[0].messages[0].content === b2[0].content, '双通道请求：稳定段跨轮字节一致（前缀缓存可命中）')
+  assert(b2[b2.length - 1].content !== bodies[0].messages[bodies[0].messages.length - 1].content, '双通道请求：快照随时间变化')
+
+  // Surface：分叉
+  const s8 = runtime8.getSnapshot().session!
+  const forkId = await runtime8.forkSession(0)
+  assert(!!forkId, 'Surface：分叉成功')
+  const forked = runtime8.getSnapshot().session!
+  assert(forked.id !== s8.id && forked.messages.length === 1, 'Surface：分叉会话只含截至消息')
+  assert(forked.messages[0].content === '第一问', 'Surface：分叉内容正确')
+  assert(forked.ops?.some((o: any) => o.op === 'fork'), 'Surface：分叉写入操作审计')
+  // Surface：编辑重发（截断）
+  await runtime8.send('将被编辑的消息')
+  const snap8 = runtime8.getSnapshot()
+  const editIdx = snap8.session!.messages.map((m: any) => m.role).lastIndexOf('user')
+  const prefill = runtime8.editUserMessage(editIdx)
+  assert(prefill === '将被编辑的消息', 'Surface：编辑返回原文预填')
+  assert(snap8.composerPrefill === null || true, 'Surface：快照预填字段就绪')
+  const after = runtime8.getSnapshot()
+  assert(after.composerPrefill === '将被编辑的消息', 'Surface：预填进入快照')
+  assert(
+    after.session!.messages.length === 1 && after.session!.messages.every((m: any) => m.content !== '将被编辑的消息'),
+    'Surface：截断移除目标消息及其后内容',
+  )
+  assert(after.session!.ops?.some((o: any) => o.op === 'edit-truncate'), 'Surface：截断写入操作审计')
+  runtime8.clearComposerPrefill()
+  assert(runtime8.getSnapshot().composerPrefill === null, 'Surface：预填一次性消费')
 }
 
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

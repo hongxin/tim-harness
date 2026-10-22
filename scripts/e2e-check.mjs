@@ -318,7 +318,52 @@ await page.waitForTimeout(200)
 if (!(await page.isVisible('.cd-summary'))) throw new Error('压缩摘要不可展开')
 console.log('✓ 上下文压缩：分界卡 + 摘要展开正常')
 
-// 12. 输入区
+// 12. Surface 操作：编辑重发 + 分叉（真实 UI 路径）
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  const s = rt.getSnapshot().session
+  s.compacted = undefined
+  s.messages.length = 0
+  s.messages.push({ role: 'user', content: '第一问' })
+  s.messages.push({ role: 'assistant', content: '答一' })
+  s.messages.push({ role: 'user', content: '第二问（要编辑）' })
+  s.messages.push({ role: 'assistant', content: '答二' })
+  rt.notify()
+})
+await page.waitForTimeout(300)
+// 分叉：自动接受 confirm
+page.once('dialog', (d) => d.accept())
+const sessionsBefore = await page.locator('.session-item').count()
+await page.locator('.msg-user').nth(0).hover()
+await page.locator('.msg-user').nth(0).locator('.msg-action[title*="分叉"]').click()
+await page.waitForTimeout(400)
+const sessionsAfter = await page.locator('.session-item').count()
+if (sessionsAfter !== sessionsBefore + 1) throw new Error(`分叉未创建新会话（${sessionsBefore}→${sessionsAfter}）`)
+const forkedTitle = await page.locator('.session-item.active .session-title').textContent()
+console.log(`✓ Surface 分叉：新会话「${forkedTitle}」已创建并切换`)
+// 编辑：在当前（分叉）会话注入消息后，点击最后一条 user 的 ✎ → 预填 + 截断
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  const s = rt.getSnapshot().session
+  s.messages.length = 0
+  s.messages.push({ role: 'user', content: '第一问' })
+  s.messages.push({ role: 'assistant', content: '答一' })
+  s.messages.push({ role: 'user', content: '第二问（要编辑）' })
+  s.messages.push({ role: 'assistant', content: '答二' })
+  rt.notify()
+})
+await page.waitForTimeout(300)
+const userCountBefore = await page.locator('.msg-user').count()
+await page.locator('.msg-user').last().hover()
+await page.locator('.msg-user').last().locator('.msg-action[title*="编辑"]').click()
+await page.waitForTimeout(300)
+const prefillVal = await page.inputValue('.composer textarea')
+if (!prefillVal.includes('要编辑')) throw new Error('编辑预填失败: ' + prefillVal)
+const userCountAfter = await page.locator('.msg-user').count()
+if (userCountAfter !== userCountBefore - 1) throw new Error(`编辑截断异常（${userCountBefore}→${userCountAfter}）`)
+console.log(`✓ Surface 编辑：原文预填输入区，消息截断（${userCountBefore}→${userCountAfter} 条用户消息）`)
+
+// 13. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')
 if (val !== '测试输入') throw new Error('输入框异常')
