@@ -847,4 +847,110 @@ const FINAL = () => [
   assert(r3.ok && r3.output!.includes('v1 基线') && r3.output!.includes('保护'), '快照：列表含基线与保护快照')
 }
 
+/* ---------------- 15. Token 经济：缓存计量 / 档位 / 增量压缩 ---------------- */
+
+{
+  // 15a. read_file offset/limit 精准读取
+  const { createMainRegistry } = await import('../src/core/tools')
+  const fs15 = new TestFS()
+  await fs15.writeFile('/big.md', Array.from({ length: 10 }, (_, i) => `line-${i + 1}`).join('\n'))
+  const reg15 = createMainRegistry({ transport: {} as Transport, sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) } })
+  const ctx15 = {
+    fs: fs15,
+    kv: new MapKV(),
+    emit: () => {},
+    signal: new AbortController().signal,
+    subagent: { run: async () => ({ ok: false, report: '' }) },
+    ui: { askUser: async () => '' },
+    state: {
+      session: { id: 't15', title: '', createdAt: 0, updatedAt: 0, messages: [], todos: [], usage: {} } as any,
+      readFiles: new Set<string>(),
+      todos: [],
+      settings: { providers: [], activeProviderId: '', proxyTemplate: '', webSearch: null, costTier: 'eco' as const },
+    },
+  }
+  const r1 = await reg15.get('read_file')!.execute({ path: '/big.md', offset: 3, limit: 2 }, ctx15 as any)
+  assert(r1.ok && r1.output!.includes('line-3') && r1.output!.includes('line-4') && !r1.output!.includes('line-2\n'), 'Token经济：read_file offset/limit 精准读取')
+  assert(r1.output!.includes('共 10 行'), 'Token经济：分页 footer 提示总行数')
+
+  // 15b. 档位策略：eco 视图预算收紧
+  const { tierPolicy } = await import('../src/core/token-economy')
+  const { buildContextView } = await import('../src/core/agent/context')
+  const eco = tierPolicy({ costTier: 'eco' })
+  const full = tierPolicy({ costTier: 'full' })
+  assert(eco.budgetChars < full.budgetChars / 4 && eco.readMax < full.readMax, 'Token经济：省流档位全面收紧')
+  const mkLong = (n: number) => [
+    { role: 'user', content: `q${n}` },
+    { role: 'assistant', content: null, tool_calls: [{ id: `c${n}`, name: 'read_file', arguments: '{}' }] },
+    { role: 'tool', tool_call_id: `c${n}`, name: 'read_file', content: 'x'.repeat(9_000) },
+    { role: 'assistant', content: `a${n}` },
+  ]
+  const msgs15: any[] = []
+  for (let i = 0; i < 8; i++) msgs15.push(...mkLong(i))
+  const ecoView = buildContextView(msgs15, eco.budgetChars, eco.recentFullResults)
+  const stdView = buildContextView(msgs15, tierPolicy({ costTier: 'standard' }).budgetChars, tierPolicy({ costTier: 'standard' }).recentFullResults)
+  assert(ecoView.messages.length < stdView.messages.length || ecoView.info.maskedResults > stdView.info.maskedResults, 'Token经济：eco 档位折叠/丢块更激进')
+
+  // 15c. 缓存命中计量累计
+  const t15 = new ScriptedTransport([
+    [sse({ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] }),
+     sse({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, prompt_cache_hit_tokens: 80, prompt_cache_miss_tokens: 20 } })],
+  ])
+  const rt15 = new HarnessRuntime({
+    kv: new MapKV(), fs: new TestFS(), transport: t15,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt15.boot()
+  await rt15.saveSettings({
+    providers: [{ id: 'mock', name: 'M', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'm' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null,
+  })
+  await rt15.send('测缓存')
+  const u15 = rt15.getSnapshot().session!.usage
+  assert((u15.prompt_cache_hit_tokens ?? 0) === 80 && (u15.prompt_cache_miss_tokens ?? 0) === 20, 'Token经济：缓存命中/未命中 token 累计入会话')
+
+  // 15d. 增量压缩：第二次压缩只总结新增段
+  const kv15 = new MapKV()
+  const SUMMARY1 = () => [sse({ choices: [{ index: 0, delta: { content: '首次摘要' }, finish_reason: 'stop' }] })]
+  const SUMMARY2 = () => [sse({ choices: [{ index: 0, delta: { content: '增量内容A' }, finish_reason: 'stop' }] })]
+  const t15d = new ScriptedTransport([SUMMARY1(), SUMMARY2()])
+  const rt15d = new HarnessRuntime({
+    kv: kv15, fs: new TestFS(), transport: t15d,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt15d.boot()
+  await rt15d.saveSettings({
+    providers: [{ id: 'mock', name: 'M', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'm' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null,
+  })
+  const s15 = rt15d.getSnapshot().session!
+  for (let i = 0; i < 5; i++) {
+    s15.messages.push({ role: 'user', content: `早期任务${i}` })
+    s15.messages.push({ role: 'assistant', content: `早期回答${i}` })
+  }
+  s15.messages.push({ role: 'user', content: '新任务一' })
+  s15.messages.push({ role: 'assistant', content: '新回答一' })
+  s15.messages.push({ role: 'user', content: '新任务二' })
+  ;(rt15d as any).notify()
+  assert(await rt15d.compactSession(false), '增量压缩：首次压缩成功')
+  const c1 = rt15d.getSnapshot().session!.compacted!
+  assert(c1.summary === '首次摘要' && c1.foldedCount === 12, `增量压缩：首次折叠 12 条（实际 ${c1.foldedCount}）`)
+  // 补充第二轮对话后再压缩（增量）
+  s15.messages.push({ role: 'assistant', content: '新回答二' })
+  s15.messages.push({ role: 'user', content: '新任务三' })
+  s15.messages.push({ role: 'assistant', content: '新回答三' })
+  s15.messages.push({ role: 'user', content: '新任务四' })
+  assert(await rt15d.compactSession(false), '增量压缩：第二次压缩成功')
+  const c2 = rt15d.getSnapshot().session!.compacted!
+  assert(c2.summary.includes('首次摘要') && c2.summary.includes('增量内容A'), '增量压缩：摘要追加合并')
+  assert(c2.foldedCount === 16, `增量压缩：折叠边界推进（${c2.foldedCount}）`)
+  // 第二次摘要请求只含新增段
+  const req2 = JSON.parse(t15d.requests[1])
+  const req2All = JSON.stringify(req2.messages)
+  assert(req2All.includes('新任务三') && !req2All.includes('早期任务3'), '增量压缩：摘要调用只发送新增段（成本O(增量)）')
+  // 无新增时手动压缩被拒绝
+  const again = await rt15d.compactSession(false)
+  assert(again === false, '增量压缩：无新增内容时拒绝空压缩')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

@@ -23,6 +23,7 @@ import type { LLMClient } from '../llm/client'
 import type { ToolRegistry } from '../tools/registry'
 import { repairTrailingToolCalls } from '../session/repair'
 import { effectiveMessages } from '../session/session'
+import { tierPolicy } from '../token-economy'
 import { buildContextView } from './context'
 
 export const DEFAULT_MAX_ITERATIONS = 24
@@ -119,7 +120,8 @@ export class AgentRunner {
       if (signal.aborted) throw new DOMException('aborted', 'AbortError')
       const forced = iteration === this.maxIterations + 1
       // 上下文预算视图：压缩（摘要+尾部）→ 旧工具结果折叠；会话日志永不改动
-      const view = buildContextView(effectiveMessages(session))
+      const policy = tierPolicy(ctx.state.settings)
+      const view = buildContextView(effectiveMessages(session), policy.budgetChars, policy.recentFullResults)
       const messages: ChatMessage[] = [
         { role: 'system', content: this.deps.buildStablePrompt() },
         ...view.messages,
@@ -167,6 +169,11 @@ export class AgentRunner {
             usage.completion_tokens =
               (usage.completion_tokens ?? 0) + (chunk.usage.completion_tokens ?? 0)
             usage.total_tokens = (usage.total_tokens ?? 0) + (chunk.usage.total_tokens ?? 0)
+            // DeepSeek 前缀缓存计量（省钱核心观测指标）
+            usage.prompt_cache_hit_tokens =
+              (usage.prompt_cache_hit_tokens ?? 0) + (chunk.usage.prompt_cache_hit_tokens ?? 0)
+            usage.prompt_cache_miss_tokens =
+              (usage.prompt_cache_miss_tokens ?? 0) + (chunk.usage.prompt_cache_miss_tokens ?? 0)
           }
           this.deps.onDraft?.(draft)
         }

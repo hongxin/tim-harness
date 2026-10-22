@@ -205,6 +205,26 @@ export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; 
         {tab === 'data' && (
           <div className="settings-body">
             <div className="form-block">
+              <div className="form-block-title">Token 成本档位</div>
+              <p className="form-desc">
+                一组联动旋钮：上下文预算（折叠/压缩时机）、工具输出上限（read_file / grep / web_fetch）、
+                保持全文的近期工具结果条数。<b>省流</b>最省钱（预算 48k 字符、read 32k、更早压缩），
+                <b>完整</b>最宽裕（260k/200k，适合大文件深分析）。随时切换，即时生效。
+              </p>
+              <div className="seg">
+                {(['eco', 'standard', 'full'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`seg-btn ${(draft.costTier ?? 'standard') === v ? 'on' : ''}`}
+                    onClick={() => update((d) => { d.costTier = v })}
+                  >
+                    {v === 'eco' ? '省流' : v === 'standard' ? '标准' : '完整'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-block">
               <div className="form-block-title">上下文压缩</div>
               <p className="form-desc">
                 水位超 80% 时自动压缩：用一次 LLM 调用把早期消息总结为摘要，之后每轮只发"摘要 + 近期尾部"，

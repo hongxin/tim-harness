@@ -64,6 +64,7 @@ export interface ContextView {
 export function buildContextView(
   messages: ChatMessage[],
   budgetChars: number = CONTEXT_BUDGET_CHARS,
+  recentFull: number = RECENT_FULL_RESULTS,
 ): ContextView {
   const estChars = estimateChars(messages)
   const info: ContextViewInfo = {
@@ -83,7 +84,7 @@ export function buildContextView(
   messages.forEach((m, i) => {
     if (m.role === 'tool') toolMsgIdx.push(i)
   })
-  const recentFullFrom = toolMsgIdx[Math.max(0, toolMsgIdx.length - RECENT_FULL_RESULTS)] ?? -1
+  const recentFullFrom = toolMsgIdx[Math.max(0, toolMsgIdx.length - recentFull)] ?? -1
 
   let view = messages.map((m, i) => {
     if (m.role !== 'tool') return m

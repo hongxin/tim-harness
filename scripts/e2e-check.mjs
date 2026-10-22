@@ -384,6 +384,30 @@ const snapRows = await page.locator('.snap-row').count()
 if (snapRows < 1) throw new Error('快照保存后列表为空')
 console.log(`✓ 工作区快照：保存并展示（${snapRows} 个）`)
 
+// 13.5 Token 经济 UI：缓存命中芯片 + 成本档位
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  const s = rt.getSnapshot().session
+  s.usage = { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100, prompt_cache_hit_tokens: 850, prompt_cache_miss_tokens: 150 }
+  rt.notify()
+})
+await page.waitForTimeout(300)
+const cacheChip = await page.textContent('.ctx-chip.ctx-cached').catch(() => null)
+if (!cacheChip || !cacheChip.includes('85%')) throw new Error('缓存命中芯片异常: ' + cacheChip)
+// 档位设置切换
+await page.click('.btn-footer:has-text("设置")')
+await page.click('.settings-tabs .rp-tab:has-text("数据")')
+await page.click('.seg-btn:has-text("省流")')
+await page.click('.modal.settings .modal-foot .btn-primary')
+await page.waitForTimeout(300)
+const tier = await page.evaluate(() => window.__TIM_RUNTIME__.getSnapshot().settings.costTier)
+if (tier !== 'eco') throw new Error('档位切换失败: ' + tier)
+console.log(`✓ Token 经济：缓存命中芯片（${cacheChip.trim()}）+ 成本档位切换（省流）`)
+await page.click('.btn-footer:has-text("设置")')
+await page.click('.settings-tabs .rp-tab:has-text("数据")')
+await page.click('.seg-btn:has-text("标准")')
+await page.click('.modal.settings .modal-foot .btn-primary')
+
 // 14. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')

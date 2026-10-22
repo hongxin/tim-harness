@@ -5,8 +5,7 @@
 import type { ToolDef, ToolResult } from '../types'
 import type { Transport } from '../ports'
 import { truncate } from '../util/path'
-
-const FETCH_MAX = 100_000
+import { tierPolicy } from '../token-economy'
 
 function err(message: string): ToolResult {
   return { ok: false, output: `Error: ${message}` }
@@ -62,7 +61,8 @@ export function createWebTools(transport: Transport): ToolDef[] {
       }
       if (status >= 400) return err(`HTTP ${status}：${truncate(body, 500)}`)
       const header = `[HTTP ${status}${viaProxy ? ' · via proxy' : ''} · ${body.length} chars]`
-      return { ok: true, output: header + '\n\n' + truncate(body, FETCH_MAX) }
+      const fetchMax = tierPolicy(ctx.state.settings).fetchMax
+      return { ok: true, output: header + '\n\n' + truncate(body, fetchMax) }
     },
   }
 

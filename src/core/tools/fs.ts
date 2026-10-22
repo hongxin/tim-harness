@@ -3,6 +3,7 @@
  * 体现 DSH 的工作纪律：先读后写、edit 要求唯一匹配、错误信息指导下一步。
  */
 import type { ToolDef, ToolResult } from '../types'
+import { tierPolicy } from '../token-economy'
 import {
   displayPath,
   formatBytes,
@@ -13,9 +14,7 @@ import {
   truncate,
 } from '../util/path'
 
-const READ_MAX = 200_000 // read_file 单文件上限（字符）
 const GREP_MAX_FILES = 2000
-const GREP_MAX_MATCHES = 200
 const WRITE_MAX = 2_000_000
 
 function err(message: string): ToolResult {
@@ -73,11 +72,13 @@ export const lsTool: ToolDef = {
 export const readFileTool: ToolDef = {
   name: 'read_file',
   description:
-    'Read a UTF-8 text file from the virtual workspace and return line-numbered content. Use it before editing an existing file. Large files are truncated.',
+    'Read a UTF-8 text file and return line-numbered content. Supports offset/limit for large files — read only the range you need (cheaper and clearer). Output is capped by the cost tier; use offset/limit to page through big files.',
   parameters: {
     type: 'object',
     properties: {
       path: { type: 'string', description: 'File path, e.g. "src/index.ts"' },
+      offset: { type: 'integer', description: 'Start line (1-based). Default 1.' },
+      limit: { type: 'integer', description: 'Max lines to return. Default: all within cap.' },
     },
     required: ['path'],
   },
@@ -87,11 +88,17 @@ export const readFileTool: ToolDef = {
     try {
       const content = await ctx.fs.readFile(path)
       ctx.state.readFiles.add(path)
-      const numbered = content
-        .split('\n')
-        .map((line, i) => `${String(i + 1).padStart(5)}\t${line}`)
-        .join('\n')
-      return ok(truncate(numbered, READ_MAX) + `\n\n[${displayPath(path)} · ${content.length} chars]`)
+      const lines = content.split('\n')
+      const offset = Math.max(1, Math.floor(Number(args.offset) || 1))
+      const limit = args.limit != null ? Math.max(1, Math.floor(Number(args.limit))) : undefined
+      const slice = lines.slice(offset - 1, limit != null ? offset - 1 + limit : undefined)
+      const cap = tierPolicy(ctx.state.settings).readMax
+      const numbered = slice.map((line, i) => `${String(offset + i).padStart(5)}\t${line}`).join('\n')
+      const footer =
+        slice.length < lines.length
+          ? `\n[共 ${lines.length} 行，本次显示 ${offset}-${offset + slice.length - 1} · 用 offset/limit 翻页]`
+          : ''
+      return ok(truncate(numbered, cap) + footer + `\n\n[${displayPath(path)} · ${content.length} chars]`)
     } catch (e) {
       return err(`读取 ${displayPath(path)} 失败：${e instanceof Error ? e.message : e}`)
     }
@@ -210,6 +217,7 @@ export const grepTool: ToolDef = {
     } catch (e) {
       return err(`正则不合法：${e instanceof Error ? e.message : e}`)
     }
+    const grepMax = tierPolicy(ctx.state.settings).grepMax
     const files: string[] = []
     try {
       await walkFiles(ctx.fs, root, files)
@@ -231,10 +239,10 @@ export const grepTool: ToolDef = {
       for (let i = 0; i < lines.length; i++) {
         if (re.test(lines[i])) {
           results.push(`${displayPath(f)}:${i + 1}: ${lines[i].trim().slice(0, 200)}`)
-          if (results.length >= GREP_MAX_MATCHES) break
+          if (results.length >= grepMax) break
         }
       }
-      if (results.length >= GREP_MAX_MATCHES) break
+      if (results.length >= grepMax) break
     }
     if (results.length === 0) return ok(`（在 ${searched} 个文本文件中未匹配到 "${pattern}"）`)
     return ok(results.join('\n') + `\n\n${results.length} matches (searched ${searched} files)`)

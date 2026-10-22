@@ -46,6 +46,9 @@ export function Composer({
   const est = snapshot.session ? Math.round(((snapshot.session.usage.total_tokens ?? 0)) ) : 0
   const ctx = snapshot.contextInfo
   const ctxPct = ctx ? Math.min(100, Math.round((ctx.estChars / ctx.budgetChars) * 100)) : 0
+  const usage = snapshot.session?.usage
+  const cacheTotal = (usage?.prompt_cache_hit_tokens ?? 0) + (usage?.prompt_cache_miss_tokens ?? 0)
+  const cachePct = cacheTotal > 0 ? Math.round(((usage?.prompt_cache_hit_tokens ?? 0) / cacheTotal) * 100) : null
 
   return (
     <div className="composer-wrap">
@@ -98,6 +101,14 @@ export function Composer({
               title={`上下文估算 ${ctx.estChars.toLocaleString()} / ${ctx.budgetChars.toLocaleString()} 字符${ctx.masked ? '，已自动折叠早期工具输出（完整记录保留在会话中）' : ''}`}
             >
               上下文 {ctxPct}%{ctx.masked ? ' · 已折叠' : ''}
+            </span>
+          )}
+          {cachePct !== null && (
+            <span
+              className={`ctx-chip ${cachePct >= 60 ? 'ctx-cached' : ''}`}
+              title={`前缀缓存命中 ${usage?.prompt_cache_hit_tokens?.toLocaleString()} / 未命中 ${usage?.prompt_cache_miss_tokens?.toLocaleString()} token（命中部分计费约为十分之一）`}
+            >
+              缓存命中 {cachePct}%
             </span>
           )}
           {est > 0 && <span className="token-chip">{est.toLocaleString()} tokens</span>}

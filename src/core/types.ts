@@ -38,6 +38,10 @@ export interface Usage {
   prompt_tokens?: number
   completion_tokens?: number
   total_tokens?: number
+  /** DeepSeek：前缀缓存命中 token 数（计费约为未命中的 1/10） */
+  prompt_cache_hit_tokens?: number
+  /** DeepSeek：前缀缓存未命中 token 数 */
+  prompt_cache_miss_tokens?: number
 }
 
 export type JsonSchema = {
@@ -112,6 +116,8 @@ export interface AppSettings {
   toolApproval?: 'off' | 'on'
   /** 上下文水位超 80% 时自动压缩（LLM 摘要折叠早期消息，省 token） */
   autoCompact?: 'on' | 'off'
+  /** 成本档位：省流/标准/完整 —— 统一调控上下文预算、工具输出上限与自动压缩时机 */
+  costTier?: 'eco' | 'standard' | 'full'
   /** 子代理模型路由：指定 provider id（缺省跟随主模型；选便宜模型可显著压成本） */
   subagentProviderId?: string
 }

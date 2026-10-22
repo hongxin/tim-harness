@@ -27,7 +27,8 @@ import { deriveTitle, effectiveMessages, newSession } from './session/session'
 import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
 import { scanSkills, type SkillMeta } from './tools/skills'
-import { buildContextView, CONTEXT_BUDGET_CHARS } from './agent/context'
+import { buildContextView } from './agent/context'
+import { tierPolicy } from './token-economy'
 import {
   listSnapshots,
   restoreSnapshot,
@@ -170,7 +171,8 @@ export class HarnessRuntime {
     const provider = this.activeProvider()
     let contextInfo: ContextInfo | null = null
     if (this.session) {
-      const info = buildContextView(effectiveMessages(this.session)).info
+      const policy = tierPolicy(this.settings)
+      const info = buildContextView(effectiveMessages(this.session), policy.budgetChars, policy.recentFullResults).info
       contextInfo = { estChars: info.estChars, budgetChars: info.budgetChars, masked: info.masked }
     }
     return {
@@ -232,6 +234,7 @@ export class HarnessRuntime {
       }
       if (!stored.toolApproval) stored.toolApproval = 'off'
       if (!stored.autoCompact) stored.autoCompact = 'on'
+      if (!stored.costTier) stored.costTier = 'standard'
       this.settings = stored
       if (migrated) await this.deps.kv.set(K_SETTINGS, stored)
     } else {
@@ -451,9 +454,10 @@ export class HarnessRuntime {
     }
     await this.persistSession()
     this.notify()
-    // 水位超 80% → 自动压缩（LLM 摘要折叠早期消息，此后 token 按尾部计费）
-    const eff = buildContextView(effectiveMessages(this.session)).info.estChars
-    if (this.settings?.autoCompact !== 'off' && eff > CONTEXT_BUDGET_CHARS * 0.8) {
+    // 水位超档位阈值 → 自动压缩（LLM 摘要折叠早期消息，此后 token 按尾部计费）
+    const policy = tierPolicy(this.settings)
+    const eff = buildContextView(effectiveMessages(this.session), policy.budgetChars, policy.recentFullResults).info.estChars
+    if (this.settings?.autoCompact !== 'off' && eff > policy.budgetChars * policy.autoCompactAt) {
       void this.compactSession(true)
     }
     return true
@@ -492,6 +496,14 @@ export class HarnessRuntime {
     }
     // 已压缩且新增不足 → 跳过自动
     if (auto && s.compacted && lastUser - s.compacted.foldedCount < 6) return false
+    // 已压缩且无新增内容（手动触发也无事可做）
+    if (s.compacted && lastUser === s.compacted.foldedCount) {
+      if (!auto) {
+        this.lastError = '自上次压缩后没有新内容，无需再次压缩。'
+        this.notify()
+      }
+      return false
+    }
 
     this.compactingFlag = true
     this.notify()
@@ -503,20 +515,30 @@ export class HarnessRuntime {
         model: provider.model,
         temperature: 0,
       })
-      // 摘要调用本身也可能超预算 → 用折叠视图发送
-      const head = s.messages.slice(0, lastUser)
-      const headView = buildContextView(head, CONTEXT_BUDGET_CHARS * 0.7).messages
+      const policy = tierPolicy(this.settings)
+      // 增量压缩：已有摘要时只总结 [foldedCount, lastUser) 新增段，追加到摘要尾部
+      // （单次成本只与新段相关 → 可以放心在高频阈值下触发）
+      const prev = s.compacted
+      const segStart = prev && prev.foldedCount < lastUser ? prev.foldedCount : 0
+      const segment = s.messages.slice(segStart, lastUser)
+      const incremental = segStart > 0
+      const headView = buildContextView(segment, policy.budgetChars * 0.7, policy.recentFullResults).messages
       let summary = ''
       for await (const chunk of client.streamChat({
         messages: [
           {
             role: 'system',
-            content:
-              'You compress conversation history for an AI coding agent that will continue this work in a browser harness. ' +
-              'Write a dense, factual summary (markdown, ≤500 words) with sections: ' +
-              '1) Original task & constraints  2) Key decisions & findings  3) Current workspace state (file paths + purpose, todos)  ' +
-              '4) Open threads & next steps. Preserve exact file paths, names and numbers. ' +
-              'Write in the conversation language. Output ONLY the summary.',
+            content: incremental
+              ? 'You maintain a rolling summary for an AI coding agent continuing work in a browser harness. ' +
+                'Below is a DELTA of recent conversation. Append a concise update (markdown, ≤200 words) covering: ' +
+                'decisions, workspace changes (exact paths), new findings, updated next steps. ' +
+                'Do not repeat what is already summarized; preserve exact file paths and numbers. ' +
+                'Write in the conversation language. Output ONLY the update.'
+              : 'You compress conversation history for an AI coding agent that will continue this work in a browser harness. ' +
+                'Write a dense, factual summary (markdown, ≤500 words) with sections: ' +
+                '1) Original task & constraints  2) Key decisions & findings  3) Current workspace state (file paths + purpose, todos)  ' +
+                '4) Open threads & next steps. Preserve exact file paths, names and numbers. ' +
+                'Write in the conversation language. Output ONLY the summary.',
           },
           ...headView,
         ],
@@ -525,8 +547,9 @@ export class HarnessRuntime {
       }
       summary = summary.trim()
       if (!summary) return false
-      s.compacted = { summary, foldedCount: lastUser, createdAt: Date.now(), model: provider.model }
-      this.recordOp(s, 'compact', lastUser, `${lastUser} messages folded`)
+      const merged = incremental ? (prev!.summary + '\n\n## 增量更新\n' + summary).slice(-12_000) : summary
+      s.compacted = { summary: merged, foldedCount: lastUser, createdAt: prev?.createdAt ?? Date.now(), model: provider.model }
+      this.recordOp(s, 'compact', lastUser, `${lastUser - segStart} messages folded (${incremental ? 'incremental' : 'full'})`)
       await this.persistSession()
       this.notify()
       return true
