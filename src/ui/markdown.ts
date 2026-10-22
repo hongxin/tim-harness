@@ -1,8 +1,9 @@
 /**
  * 极简 Markdown 渲染器（零依赖、防 XSS）。
- * 支持子集：标题、段落、粗体/斜体/行内代码、链接（仅 http(s)）、
- * 引用、无序/有序列表、分隔线、围栏代码块（带复制按钮）。
- * 所有原始 HTML 先转义，再生成受控标签。
+ * 支持子集：标题、段落、粗体/斜体/删除线/行内代码、链接（仅 http(s)）、
+ * 引用、无序/有序列表（一层嵌套）、任务列表（- [ ] / - [x]）、
+ * GFM 管道表格（含对齐）、分隔线、围栏代码块（带复制按钮）。
+ * 所有原始 HTML 先转义，再生成受控标签；外链图片渲染为链接（不自动加载外部资源）。
  */
 
 function escapeHtml(s: string): string {
@@ -37,6 +38,15 @@ function renderInline(text: string): string {
         continue
       }
     }
+    // 删除线
+    if (src.startsWith('~~', i)) {
+      const end = src.indexOf('~~', i + 2)
+      if (end !== -1) {
+        out += `<del>${src.slice(i + 2, end)}</del>`
+        i = end + 2
+        continue
+      }
+    }
     // 斜体
     if (src.startsWith('*', i) && !src.startsWith('**', i)) {
       const end = src.indexOf('*', i + 1)
@@ -44,6 +54,22 @@ function renderInline(text: string): string {
         out += `<em>${src.slice(i + 1, end)}</em>`
         i = end + 1
         continue
+      }
+    }
+    // 图片 ![alt](url) → 渲染为链接（不自动加载外部图，隐私与排版友好）
+    if (src.startsWith('![', i)) {
+      const closeText = src.indexOf(']', i + 2)
+      if (closeText !== -1 && src.startsWith('(', closeText + 1)) {
+        const closeParen = src.indexOf(')', closeText + 2)
+        if (closeParen !== -1) {
+          const label = src.slice(i + 2, closeText)
+          const url = src.slice(closeText + 2, closeParen)
+          if (/^https?:\/\//i.test(url)) {
+            out += `<a href="${url}" target="_blank" rel="noopener noreferrer" class="md-imglink">🖼 ${label || url}</a>`
+            i = closeParen + 1
+            continue
+          }
+        }
       }
     }
     // 链接 [text](url)
@@ -76,6 +102,108 @@ function renderInline(text: string): string {
   return out
 }
 
+/* ---------------- 表格 ---------------- */
+
+const TABLE_SEP = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/
+
+function splitRow(line: string): string[] {
+  let s = line.trim()
+  if (s.startsWith('|')) s = s.slice(1)
+  if (s.endsWith('|')) s = s.slice(0, -1)
+  // 先保护转义管道与行内代码中的管道，切分后还原
+  const guard = ' \u0000PIPE\u0000 '
+  const segments: string[] = []
+  let inCode = false
+  let cur = ''
+  for (let j = 0; j < s.length; j++) {
+    const ch = s[j]
+    if (ch === '`') inCode = !inCode
+    if (ch === '\\' && s[j + 1] === '|') {
+      cur += guard
+      j++
+      continue
+    }
+    if (ch === '|' && !inCode) {
+      segments.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  segments.push(cur)
+  return segments.map((c) => c.trim().replaceAll(guard, '|'))
+}
+
+function sepAlignments(line: string): ('left' | 'center' | 'right')[] {
+  return splitRow(line).map((cell) => {
+    const t = cell.trim()
+    const l = t.startsWith(':')
+    const r = t.endsWith(':')
+    if (l && r) return 'center'
+    if (r) return 'right'
+    return 'left'
+  })
+}
+
+function renderTable(header: string, sep: string, bodyLines: string[]): string {
+  const aligns = sepAlignments(sep)
+  const th = splitRow(header)
+    .map((c, i) => `<th class="md-th align-${aligns[i] ?? 'left'}">${renderInline(c)}</th>`)
+    .join('')
+  const rows = bodyLines
+    .map((line) => {
+      const cells = splitRow(line)
+      const cols = Math.max(th ? splitRow(header).length : 0, cells.length)
+      const tds: string[] = []
+      for (let i = 0; i < cols; i++) {
+        tds.push(`<td class="md-td align-${aligns[i] ?? 'left'}">${renderInline(cells[i] ?? '')}</td>`)
+      }
+      return `<tr>${tds.join('')}</tr>`
+    })
+    .join('')
+  return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`
+}
+
+/* ---------------- 列表 ---------------- */
+
+function renderListItem(text: string): string {
+  const task = /^\[( |x|X)\]\s+(.*)$/.exec(text)
+  if (task) {
+    const checked = task[1].toLowerCase() === 'x'
+    return `<span class="md-task ${checked ? 'done' : ''}"><span class="md-task-box">${checked ? '☑' : '☐'}</span>${renderInline(task[2])}</span>`
+  }
+  return renderInline(text)
+}
+
+/** 解析连续的列表行（支持一层嵌套：≥2 空格缩进） */
+function renderListBlock(lines: string[], ordered: boolean): string {
+  type Item = { text: string; children: string[] }
+  const items: Item[] = []
+  for (const raw of lines) {
+    const m = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw)
+    if (!m) {
+      // 延续行并入最后一个条目
+      if (items.length > 0) items[items.length - 1].text += ' ' + raw.trim()
+      continue
+    }
+    const indent = m[1].length
+    if (indent >= 2 && items.length > 0) items[items.length - 1].children.push(m[3])
+    else items.push({ text: m[3], children: [] })
+  }
+  const tag = ordered ? 'ol' : 'ul'
+  const html = items
+    .map((it) => {
+      const inner = it.children.length
+        ? `<${tag} class="md-list md-nested">${it.children.map((c) => `<li>${renderListItem(c)}</li>`).join('')}</${tag}>`
+        : ''
+      return `<li>${renderListItem(it.text)}${inner}</li>`
+    })
+    .join('')
+  return `<${tag} class="md-list${ordered ? ' md-ol' : ''}">${html}</${tag}>`
+}
+
+/* ---------------- 主渲染 ---------------- */
+
 export function renderMarkdown(md: string): string {
   const lines = md.replace(/\r\n/g, '\n').split('\n')
   const out: string[] = []
@@ -106,6 +234,21 @@ export function renderMarkdown(md: string): string {
       out.push(
         `<div class="md-codeblock"><div class="md-codebar"><span>${escapeHtml(lang)}</span><button type="button" class="md-copy" data-copy>复制</button></div><pre><code>${codeHtml}</code></pre></div>`,
       )
+      continue
+    }
+
+    // GFM 表格：当前行含 | 且下一行是分隔行
+    if (line.includes('|') && i + 1 < lines.length && TABLE_SEP.test(lines[i + 1]) && lines[i + 1].includes('-')) {
+      flushParagraph(para)
+      const header = lines[i]
+      const sep = lines[i + 1]
+      i += 2
+      const body: string[] = []
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+        body.push(lines[i])
+        i++
+      }
+      out.push(renderTable(header, sep, body))
       continue
     }
 
@@ -142,26 +285,25 @@ export function renderMarkdown(md: string): string {
       out.push(`<blockquote class="md-quote">${renderInline(quote.join('\n'))}</blockquote>`)
       continue
     }
-    // 无序列表
-    if (/^\s*[-*]\s+/.test(line)) {
+    // 列表（无序 / 有序，支持嵌套与任务项）
+    if (/^\s*[-*+]\s+/.test(line)) {
       flushParagraph(para)
-      const items: string[] = []
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        items.push(`<li>${renderInline(lines[i].replace(/^\s*[-*]\s+/, ''))}</li>`)
+      const block: string[] = []
+      while (i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) {
+        block.push(lines[i])
         i++
       }
-      out.push(`<ul class="md-list">${items.join('')}</ul>`)
+      out.push(renderListBlock(block, false))
       continue
     }
-    // 有序列表
     if (/^\s*\d+[.)]\s+/.test(line)) {
       flushParagraph(para)
-      const items: string[] = []
-      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
-        items.push(`<li>${renderInline(lines[i].replace(/^\s*\d+[.)]\s+/, ''))}</li>`)
+      const block: string[] = []
+      while (i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) {
+        block.push(lines[i])
         i++
       }
-      out.push(`<ol class="md-list md-ol">${items.join('')}</ol>`)
+      out.push(renderListBlock(block, true))
       continue
     }
 

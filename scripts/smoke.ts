@@ -524,4 +524,53 @@ const FINAL = () => [
   assert(s5.approval === null, '审批：结束无残留挂起卡片')
 }
 
+/* ---------------- 10. 技能系统（/skills/<name>/SKILL.md） ---------------- */
+
+{
+  const { scanSkills, skillTool } = await import('../src/core/tools/skills')
+  const fs = new TestFS()
+  await fs.writeFile('/skills/demo/SKILL.md', '# Demo Skill\n> 演示技能：做演示\n\n## 步骤\n1. 第一步')
+  await fs.writeFile('/skills/report/SKILL.md', '# 报告生成\n> 按模板生成周报')
+  await fs.writeFile('/skills/no-meta/SKILL.md', '只是普通内容没有标题')
+  await fs.writeFile('/other/not-skill.md', '# 不算技能')
+  const idx = await scanSkills(fs)
+  assert(idx.length === 3, `技能索引：发现 3 个（${idx.map((s: any) => s.name).join('、')}）`)
+  assert(
+    idx.some((s: any) => s.name === 'Demo Skill' && s.description === '演示技能：做演示'),
+    '技能索引：h1 名称 + 引用行描述解析',
+  )
+  assert(idx.some((s: any) => s.name === 'no-meta'), '技能索引：无元数据时回退目录名')
+
+  const ctx10 = {
+    fs,
+    kv: new MapKV(),
+    emit: () => {},
+    signal: new AbortController().signal,
+    subagent: { run: async () => ({ ok: false, report: '' }) },
+    ui: { askUser: async () => '' },
+    state: {
+      session: null,
+      readFiles: new Set<string>(),
+      todos: [],
+      settings: { providers: [], activeProviderId: '', proxyTemplate: '', webSearch: null },
+    },
+  }
+  const r1 = await skillTool.execute({ name: 'Demo Skill' }, ctx10 as any)
+  assert(r1.ok && r1.output!.includes('第一步'), 'skill 工具：按名称装载完整说明')
+  const r2 = await skillTool.execute({ name: '不存在' }, ctx10 as any)
+  assert(!r2.ok && r2.output!.includes('可用技能'), 'skill 工具：未找到时给出可用清单')
+  const r3 = await skillTool.execute({ name: '../etc' }, ctx10 as any)
+  assert(!r3.ok, 'skill 工具：非法名称拒绝（防路径穿越）')
+
+  // runtime 集成：boot 后技能进入快照（系统提示注入同源）
+  const runtime6 = new HarnessRuntime({
+    kv: new MapKV(),
+    fs,
+    transport: new ScriptedTransport([]),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await runtime6.boot()
+  assert(runtime6.getSnapshot().skills.length === 3, 'runtime：技能索引进入快照')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

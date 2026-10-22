@@ -9,6 +9,7 @@ import { editFileTool, globTool, grepTool, lsTool, readFileTool, writeFileTool }
 import { createRunJsTool } from './js'
 import { createWebTools } from './web'
 import { askUserTool, spawnAgentTool, todoWriteTool } from './workflow'
+import { skillTool } from './skills'
 
 export interface ToolDeps {
   transport: Transport
@@ -28,6 +29,7 @@ export function createMainRegistry(deps: ToolDeps): ToolRegistry {
     todoWriteTool,
     spawnAgentTool,
     askUserTool,
+    skillTool,
   ])
 }
 
@@ -42,6 +44,7 @@ export function createSubagentRegistry(deps: ToolDeps): ToolRegistry {
     createRunJsTool(deps.sandbox),
     ...createWebTools(deps.transport),
     todoWriteTool,
+    skillTool,
   ])
 }
 

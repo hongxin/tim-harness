@@ -4,6 +4,7 @@
  * 把工作纪律写进工具描述与规程，让模型在一个诚实的环境里工作。
  */
 import type { TodoItem } from '../types'
+import type { SkillMeta } from '../tools/skills'
 
 export interface PromptEnv {
   now: Date
@@ -11,6 +12,7 @@ export interface PromptEnv {
   todos: TodoItem[]
   hasSearchProvider: boolean
   hasProxy: boolean
+  skills?: SkillMeta[]
 }
 
 export function buildSystemPrompt(env: PromptEnv): string {
@@ -37,9 +39,10 @@ export function buildSystemPrompt(env: PromptEnv): string {
 
   const iso = env.now.toISOString().replace('T', ' ').slice(0, 19)
   const todoLines = renderTodos(env.todos)
+  const skillLines = renderSkills(env.skills)
   sections.push(`# Current context
 - Time: ${iso} UTC (${env.timezone})
-- Workspace: / (virtual FS in browser)${todoLines}`)
+- Workspace: / (virtual FS in browser)${todoLines}${skillLines}`)
 
   sections.push(`# Response style
 - Always respond in the user's language (default Chinese).
@@ -55,4 +58,13 @@ function renderTodos(todos: TodoItem[]): string {
     .map((t) => `- [${t.status === 'completed' ? 'x' : t.status === 'in_progress' ? '>' : ' '}] ${t.content}`)
     .join('\n')
   return `\n- Task list:\n${lines}`
+}
+
+function renderSkills(skills?: SkillMeta[]): string {
+  if (!skills || skills.length === 0) return ''
+  const lines = skills.map((s) => `- ${s.name}${s.description ? `：${s.description}` : ''}`).join('\n')
+  return (
+    `\n- Available skills (load with the skill tool before following one):\n${lines}` +
+    `\n  Skills live in /skills/<name>/SKILL.md — you can create new skills for reusable workflows with write_file; new skills become available automatically.`
+  )
 }

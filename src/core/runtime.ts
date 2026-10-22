@@ -25,6 +25,7 @@ import { buildSystemPrompt } from './agent/prompts'
 import { deriveTitle, newSession } from './session/session'
 import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
+import { scanSkills, type SkillMeta } from './tools/skills'
 import { buildContextView } from './agent/context'
 import { genId, normalizePath } from './util/path'
 
@@ -68,6 +69,8 @@ export interface RuntimeSnapshot {
   fsRev: number
   /** 当前会话中智能体写入/修改过的文件（UI 高亮"执行效果"用） */
   writtenFiles: string[]
+  /** 已发现的技能（/skills/<name>/SKILL.md） */
+  skills: SkillMeta[]
 }
 
 export const DEFAULT_PROVIDERS: ProviderSetting[] = [
@@ -125,6 +128,7 @@ export class HarnessRuntime {
   private readFilesBySession = new Map<string, Set<string>>()
   private fsRev = 0
   private writtenBySession = new Map<string, Set<string>>()
+  private skills: SkillMeta[] = []
 
   private listeners = new Set<() => void>()
   private snapshot: RuntimeSnapshot
@@ -167,6 +171,7 @@ export class HarnessRuntime {
       subagentNote: this.subagentNote,
       fsRev: this.fsRev,
       writtenFiles: [...(this.session ? this.writtenBySession.get(this.session.id) ?? [] : [])],
+      skills: this.skills,
     }
   }
 
@@ -218,8 +223,23 @@ export class HarnessRuntime {
     }
     await this.loadSessions()
     if (!this.session) this.createSession()
+    await this.refreshSkills()
     this.booted = true
     this.notify()
+  }
+
+  /** 扫描 /skills/ 下各技能的 SKILL.md，变更时通知（系统提示注入 + UI 展示） */
+  async refreshSkills(): Promise<void> {
+    let next: SkillMeta[]
+    try {
+      next = await scanSkills(this.deps.fs)
+    } catch {
+      return
+    }
+    if (JSON.stringify(next) !== JSON.stringify(this.skills)) {
+      this.skills = next
+      if (this.booted) this.notify()
+    }
   }
 
   private async loadSessions(): Promise<void> {
@@ -430,6 +450,7 @@ export class HarnessRuntime {
             todos,
             hasSearchProvider: !!this.settings?.webSearch?.apiKey,
             hasProxy: !!this.settings?.proxyTemplate?.trim(),
+            skills: this.skills,
           }),
         buildContext: (signal) => {
           const ctx: ToolContext = {
@@ -484,6 +505,7 @@ export class HarnessRuntime {
       todos: this.session?.todos ?? [],
       hasSearchProvider: !!this.settings?.webSearch?.apiKey,
       hasProxy: !!this.settings?.proxyTemplate?.trim(),
+      skills: this.skills,
     })
     if (!masked) return base
     return (
@@ -582,6 +604,8 @@ export class HarnessRuntime {
             }
             set.add(path)
             this.fsRev++
+            // 技能文件可能被创建/修改 → 重扫技能索引
+            void this.refreshSkills()
           }
         } catch {
           /* args 解析失败忽略 */
@@ -702,6 +726,7 @@ export class HarnessRuntime {
       n++
     }
     this.fsRev++
+    if (files.some((f) => f.path.startsWith('/skills/'))) void this.refreshSkills()
     this.notify()
     return n
   }

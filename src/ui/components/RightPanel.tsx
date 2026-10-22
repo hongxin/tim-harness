@@ -493,6 +493,17 @@ export function RightPanel({
               {fsMode === 'opfs' ? 'OPFS' : '内存+KV'}
             </span>
           </div>
+          {snapshot.skills.length > 0 && (
+            <div className="skills-strip" title={snapshot.skills.map((s) => `${s.name}：${s.description}`).join('\n')}>
+              <span className="skills-badge">⚙ 技能 {snapshot.skills.length}</span>
+              {snapshot.skills.slice(0, 3).map((s) => (
+                <span key={s.path} className="skill-chip" title={s.description}>
+                  {s.name}
+                </span>
+              ))}
+              {snapshot.skills.length > 3 && <span className="skill-chip more">+{snapshot.skills.length - 3}</span>}
+            </div>
+          )}
           {loading ? (
             <div className="rp-empty">读取中…</div>
           ) : files.length === 0 ? (

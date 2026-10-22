@@ -229,7 +229,55 @@ const errCardOpen = await page.locator('.toolcard-err .toolcard-body').count()
 if (errCardOpen < 1) throw new Error('失败工具卡未自动展开')
 console.log(`✓ 上下文水位芯片（${ctxChip.trim()}）+ 失败工具卡自动展开`)
 
-// 10. 输入区
+// 10. Markdown 富格式渲染（表格 / 任务列表 / 删除线）
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  const s = rt.getSnapshot().session
+  s.messages.push({
+    role: 'assistant',
+    content: [
+      '对比表：',
+      '',
+      '| 模块 | 状态 | 得分 |',
+      '|:--|:-:|--:|',
+      '| core | 稳定 | 95 |',
+      '| UI | 迭代中 | 88 |',
+      '',
+      '任务清单：',
+      '- [x] 表格渲染',
+      '- [ ] ~~旧方案废弃~~ 已完成删除线',
+      '  - 嵌套子项',
+    ].join('\n'),
+  })
+  rt.notify()
+})
+await page.waitForTimeout(300)
+const tableCells = await page.locator('.md-table .md-td').count()
+if (tableCells < 6) throw new Error('表格渲染异常: ' + tableCells)
+const alignRight = await page.locator('.md-table .align-right').count()
+const alignCenter = await page.locator('.md-table .align-center').count()
+if (alignRight < 3 || alignCenter < 3) throw new Error(`表格对齐异常（右 ${alignRight}/中 ${alignCenter}）`)
+const taskBox = await page.locator('.md-task-box').count()
+const del = await page.locator('.md-body del').count()
+const nested = await page.locator('.md-nested').count()
+if (taskBox < 2 || del < 1 || nested < 1) throw new Error(`任务/删除线/嵌套渲染异常（${taskBox}/${del}/${nested}）`)
+console.log(`✓ Markdown 富格式：表格 ${tableCells} 单元格（含对齐）、任务列表、删除线、嵌套列表`)
+await page.screenshot({ path: new URL('../docs/screenshots/markdown-table.png', import.meta.url).pathname })
+
+// 11. 技能系统（注入技能文件 → 索引可见）
+await page.evaluate(async () => {
+  const rt = window.__TIM_RUNTIME__
+  await rt.importWorkspaceFiles([
+    { path: '/skills/demo/SKILL.md', content: '# Demo Skill\n> 演示技能\n\n1. 第一步' },
+  ])
+})
+await page.click('.rp-tab:has-text("文件")')
+await page.waitForTimeout(700)
+const skillChips = await page.locator('.skill-chip').count()
+if (skillChips < 1) throw new Error('技能索引未在 UI 显示')
+console.log('✓ 技能系统：/skills/SKILL.md 自动入索引并展示')
+
+// 12. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')
 if (val !== '测试输入') throw new Error('输入框异常')

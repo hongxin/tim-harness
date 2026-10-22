@@ -47,7 +47,9 @@ npm run dev        # http://localhost:5188
 
 | Capability | Details |
 |---|---|
-| Multi-turn tool calling | 12 tools: `ls / read_file / write_file / edit_file / grep / glob / run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user` |
+| Multi-turn tool calling | 13 tools: `ls / read_file / write_file / edit_file / grep / glob / run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user / skill` |
+| Skills | `/skills/<name>/SKILL.md` auto-indexed into the system prompt; loaded on demand via the `skill` tool — the agent can even author new skills itself |
+| Rich rendering | GFM tables (with column alignment), task lists, strikethrough, nested lists, copyable code blocks |
 | Virtual workspace | OPFS-persistent file system (survives reloads), with import / export / download |
 | Code sandbox | Isolated Web Worker execution with console capture; infinite loops terminated in ~1.5s |
 | Live HTML preview | Sandboxed iframe + console capture with level filters; auto-refreshes when the agent writes. Big view adds device width presets (375/768/1280), open-in-new-tab, Esc to close |

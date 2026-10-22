@@ -339,7 +339,31 @@ code, pre, .mono { font-family: var(--font-mono); }
 }
 .md-list { margin: 4px 0 10px; padding-left: 22px; }
 .md-list li { margin: 3px 0; }
+.md-nested { margin: 3px 0 3px; padding-left: 18px; }
 .md-ol li::marker { color: var(--text-faint); font-family: var(--font-mono); font-size: 12px; }
+
+/* 任务列表（- [ ] / - [x]） */
+.md-task { display: inline-flex; align-items: baseline; gap: 7px; }
+.md-task-box { color: var(--accent); font-size: 13px; flex-shrink: 0; user-select: none; }
+.md-task.done .md-task-box { color: var(--text-faint); }
+.md-task.done > *:not(.md-task-box) { color: var(--text-faint); text-decoration: line-through; }
+
+/* GFM 表格 */
+.md-table-wrap { overflow-x: auto; margin: 10px 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.md-table { border-collapse: collapse; width: 100%; font-size: 13px; line-height: 1.55; }
+.md-th, .md-td { padding: 7px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.md-td { color: var(--text-dim); }
+.md-table tbody tr:last-child .md-td { border-bottom: none; }
+.md-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg-panel) 55%, transparent); }
+.md-table tbody tr:hover { background: var(--bg-hover); }
+.md-th {
+  background: var(--bg-panel-2); color: var(--text); font-weight: 600; text-align: left;
+  border-bottom: 1px solid var(--border-strong); font-size: 12.5px;
+}
+.align-center { text-align: center !important; }
+.align-right { text-align: right !important; }
+
+.md-imglink { font-style: normal; }
 .md-code {
   font-size: 12.8px; background: var(--bg-raised); border: 1px solid var(--border);
   border-radius: 5px; padding: 1px 5px; color: var(--amber);
@@ -556,6 +580,20 @@ body.rp-resizing iframe { pointer-events: none; }
   display: inline-block; margin-left: 5px; vertical-align: middle;
   animation: pulse 1.6s infinite;
 }
+
+/* 技能条（文件页顶部） */
+.skills-strip {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  margin-bottom: 8px; padding: 6px 8px; border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--bg-panel-2);
+}
+.skills-badge { font-size: 11px; color: var(--blue); font-weight: 600; flex-shrink: 0; }
+.skill-chip {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim);
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px;
+  max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.skill-chip.more { color: var(--text-faint); }
 
 /* ---------------- 预览 ---------------- */
 
