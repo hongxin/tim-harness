@@ -112,6 +112,23 @@ export interface AppSettings {
   toolApproval?: 'off' | 'on'
   /** 上下文水位超 80% 时自动压缩（LLM 摘要折叠早期消息，省 token） */
   autoCompact?: 'on' | 'off'
+  /** 子代理模型路由：指定 provider id（缺省跟随主模型；选便宜模型可显著压成本） */
+  subagentProviderId?: string
+}
+
+/* ---------------- 目标驱动 ---------------- */
+
+export type GoalStatus = 'active' | 'paused' | 'complete' | 'blocked'
+
+export interface GoalState {
+  objective: string
+  status: GoalStatus
+  /** 已执行轮次 */
+  rounds: number
+  maxRounds: number
+  note?: string
+  createdAt: number
+  updatedAt: number
 }
 
 /* ---------------- 会话 ---------------- */
@@ -139,10 +156,12 @@ export interface SessionModel {
   }
   /** surface 操作审计日志（append-only；事件溯源精神的审计面） */
   ops?: SessionOp[]
+  /** 目标驱动状态（DSH goal 轮次驱动的浏览器化） */
+  goal?: GoalState
 }
 
 export interface SessionOp {
-  op: 'compact' | 'edit-truncate' | 'fork' | 'repair' | 'fork-source'
+  op: 'compact' | 'edit-truncate' | 'fork' | 'fork-source' | 'repair' | 'goal'
   at?: number
   ts: number
   note?: string

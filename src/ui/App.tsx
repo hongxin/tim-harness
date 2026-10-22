@@ -7,6 +7,7 @@ import { ChatView } from './components/ChatView'
 import { ApprovalCard, AskUserCard, Composer } from './components/Composer'
 import { RightPanel } from './components/RightPanel'
 import { SettingsDialog } from './components/SettingsDialog'
+import { GoalBar, GoalModal } from './components/Goal'
 import { looksBinary, readFileAsBytes, readFileAsText } from './fileops'
 
 function BootSplash() {
@@ -46,6 +47,7 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'dark')
   const [rpWidth, setRpWidth] = useState(loadRightPanelWidth)
   const [dragOver, setDragOver] = useState(false)
+  const [goalOpen, setGoalOpen] = useState(false)
 
   useEffect(() => {
     if (window.innerWidth < 1100) setRightOpen(false)
@@ -127,8 +129,15 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
         onToggleTheme={toggleTheme}
       />
       <main className="mainpane">
-        <TopBar snapshot={snapshot} runtime={runtime} rightOpen={rightOpen} onToggleRight={() => setRightOpen((v) => !v)} />
+        <TopBar
+          snapshot={snapshot}
+          runtime={runtime}
+          rightOpen={rightOpen}
+          onToggleRight={() => setRightOpen((v) => !v)}
+          onOpenGoal={() => setGoalOpen(true)}
+        />
         <ChatView snapshot={snapshot} runtime={runtime} />
+        <GoalBar snapshot={snapshot} runtime={runtime} />
         <Composer
           snapshot={snapshot}
           runtime={runtime}
@@ -151,6 +160,7 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
         />
       )}
       {settingsOpen && <SettingsDialog runtime={runtime} onClose={() => setSettingsOpen(false)} />}
+      {goalOpen && <GoalModal runtime={runtime} onClose={() => setGoalOpen(false)} />}
       {dragOver && (
         <div className="dropzone-overlay">
           <div className="dropzone-inner">

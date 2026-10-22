@@ -723,4 +723,128 @@ const FINAL = () => [
   assert(runtime8.getSnapshot().composerPrefill === null, 'Surface：预填一次性消费')
 }
 
+/* ---------------- 14. v0.3：目标驱动 + 模型路由 + 工作区快照 ---------------- */
+
+{
+  // 14a. 目标驱动：两轮自动推进，第二轮模型调用 goal_update(complete)
+  const kv = new MapKV()
+  const fs = new TestFS()
+  const t14 = new ScriptedTransport([
+    [sse({ choices: [{ index: 0, delta: { content: '第一轮推进中' }, finish_reason: 'stop' }] })],
+    [
+      toolCallChunk('g1', 'goal_update', '{"status":"complete","note":"全部完成"}', true),
+      sse({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }),
+    ],
+    [sse({ choices: [{ index: 0, delta: { content: '目标已达成，总结如下' }, finish_reason: 'stop' }] })],
+  ])
+  const rt14 = new HarnessRuntime({
+    kv,
+    fs,
+    transport: t14,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt14.boot()
+  await rt14.saveSettings({
+    providers: [{ id: 'mock', name: 'Mock', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'mock-1' }],
+    activeProviderId: 'mock',
+    proxyTemplate: '',
+    webSearch: null,
+  })
+  rt14.startGoal('完成演示目标', 3)
+  await new Promise((r) => setTimeout(r, 250)) // 等 driveGoal 完成
+  const g14 = rt14.getSnapshot().session!.goal!
+  assert(g14.status === 'complete', `目标驱动：模型标记 complete（实际 ${g14.status}）`)
+  assert(g14.rounds === 2, `目标驱动：恰好自动推进 2 轮（实际 ${g14.rounds}）`)
+  const bodies14 = t14.requests.map((r) => JSON.parse(r))
+  assert(bodies14[0].messages.some((m: any) => (m.content ?? '').includes('[goal round 1/3]')), '目标驱动：第 1 轮注入目标提示')
+  assert(bodies14[1].messages.some((m: any) => (m.content ?? '').includes('[goal round 2/3]')), '目标驱动：第 2 轮自动续发')
+  assert(bodies14[2].messages.some((m: any) => m.role === 'tool' && m.content.includes('目标状态已更新为 complete')), '目标驱动：goal_update 结果回灌')
+  assert(rt14.getSnapshot().status === 'idle', '目标驱动：结束后回到 idle')
+
+  // 14b. 缺 Key 时 startGoal 不空转
+  const rt14b = new HarnessRuntime({
+    kv: new MapKV(),
+    fs: new TestFS(),
+    transport: new ScriptedTransport([]),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt14b.boot() // 默认 DeepSeek 无 Key
+  rt14b.startGoal('不会推进的目标', 5)
+  await new Promise((r) => setTimeout(r, 120))
+  const gb = rt14b.getSnapshot()
+  assert(gb.session!.goal!.rounds <= 1 && gb.status === 'idle', '目标驱动：缺配置时守卫停转（不空烧轮次）')
+  rt14b.cancelGoal()
+
+  // 14c. 模型路由：子代理请求使用配置的便宜模型
+  const t14c = new ScriptedTransport([
+    [
+      toolCallChunk('sa1', 'spawn_agent', '{"prompt":"子任务","description":"t"}', true),
+      sse({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }),
+    ],
+    [sse({ choices: [{ index: 0, delta: { content: 'sub-ok' }, finish_reason: 'stop' }] })],
+    [sse({ choices: [{ index: 0, delta: { content: 'main-ok' }, finish_reason: 'stop' }] })],
+  ])
+  const rt14c = new HarnessRuntime({
+    kv: new MapKV(),
+    fs: new TestFS(),
+    transport: t14c,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt14c.boot()
+  await rt14c.saveSettings({
+    providers: [
+      { id: 'main-p', name: 'MainModel', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'big-strong' },
+      { id: 'sub-p', name: 'CheapModel', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'small-cheap' },
+    ],
+    activeProviderId: 'main-p',
+    proxyTemplate: '',
+    webSearch: null,
+    subagentProviderId: 'sub-p',
+  })
+  await rt14c.send('派个子代理')
+  const models = t14c.requests.map((r) => JSON.parse(r).model)
+  assert(models[0] === 'big-strong', '模型路由：主会话用主模型')
+  assert(models[1] === 'small-cheap', '模型路由：子代理用配置的便宜模型')
+  assert(models[2] === 'big-strong', '模型路由：主循环回到主模型')
+
+  // 14d. 工作区快照：save → 改动 → diff → restore（含自动保护）
+  const { createMainRegistry } = await import('../src/core/tools')
+  const fs14 = new TestFS()
+  await fs14.writeFile('/app/index.html', '<h1>v1</h1>')
+  await fs14.writeFile('/app/old.css', 'body{}')
+  const kv14 = new MapKV()
+  const noopSandbox14 = { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) }
+  const reg14 = createMainRegistry({ transport: {} as Transport, sandbox: noopSandbox14 })
+  const ctx14 = {
+    fs: fs14,
+    kv: kv14,
+    emit: () => {},
+    signal: new AbortController().signal,
+    subagent: { run: async () => ({ ok: false, report: '' }) },
+    ui: { askUser: async () => '' },
+    state: {
+      session: { id: 't14', title: '', createdAt: 0, updatedAt: 0, messages: [], todos: [], usage: {} } as any,
+      readFiles: new Set<string>(),
+      todos: [],
+      settings: { providers: [], activeProviderId: '', proxyTemplate: '', webSearch: null },
+    },
+  }
+  const r1 = await reg14.get('snapshot_save')!.execute({ label: 'v1 基线' }, ctx14 as any)
+  assert(r1.ok && r1.output!.includes('v1 基线'), '快照：保存成功')
+  await fs14.writeFile('/app/index.html', '<h1>v2</h1>')
+  await fs14.writeFile('/app/new.js', 'console.log(1)')
+  await fs14.deleteEntry('/app/old.css')
+  const d1 = await reg14.get('snapshot_diff')!.execute({ id: (r1.output!.match(/#(snap_\w+)/) ?? [])[1] }, ctx14 as any)
+  assert(d1.ok && d1.output!.includes('~ /app/index.html') && d1.output!.includes('+ /app/new.js') && d1.output!.includes('- /app/old.css'), '快照：diff 正确（改/增/删）')
+  const r2 = await reg14.get('snapshot_restore')!.execute({ id: (r1.output!.match(/#(snap_\w+)/) ?? [])[1] }, ctx14 as any)
+  assert(r2.ok && r2.output!.includes('保护快照'), '快照：恢复带自动保护')
+  assert((await fs14.readFile('/app/index.html')) === '<h1>v1</h1>', '快照：内容恢复到基线')
+  assert((await fs14.readFile('/app/old.css')) === 'body{}', '快照：被删文件恢复')
+  let newJsGone = false
+  try { await fs14.readFile('/app/new.js') } catch { newJsGone = true }
+  assert(newJsGone, '快照：多余文件被精确移除')
+  const r3 = await reg14.get('snapshot_list')!.execute({}, ctx14 as any)
+  assert(r3.ok && r3.output!.includes('v1 基线') && r3.output!.includes('保护'), '快照：列表含基线与保护快照')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

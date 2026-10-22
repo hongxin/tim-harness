@@ -28,6 +28,13 @@ import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
 import { scanSkills, type SkillMeta } from './tools/skills'
 import { buildContextView, CONTEXT_BUDGET_CHARS } from './agent/context'
+import {
+  listSnapshots,
+  restoreSnapshot,
+  saveSnapshot,
+  type WorkspaceSnapshot,
+} from './workspace-snapshots'
+import type { GoalState } from './types'
 import { genId, normalizePath } from './util/path'
 
 export type RuntimeStatus = 'idle' | 'running'
@@ -66,6 +73,8 @@ export interface RuntimeSnapshot {
   compacting: boolean
   /** 编辑用户消息后预填到输入区的文本（一次性） */
   composerPrefill: string | null
+  /** 快照集合变更信号 */
+  snapRev: number
   settings: AppSettings | null
   lastError: string | null
   providerLabel: string | null
@@ -136,6 +145,8 @@ export class HarnessRuntime {
   private skills: SkillMeta[] = []
   private compactingFlag = false
   private composerPrefill: string | null = null
+  private snapRevCounter = 0
+  private goalLoopRunning = false
 
   private listeners = new Set<() => void>()
   private snapshot: RuntimeSnapshot
@@ -174,6 +185,7 @@ export class HarnessRuntime {
       contextInfo,
       compacting: this.compactingFlag,
       composerPrefill: this.composerPrefill,
+      snapRev: this.snapRevCounter,
       settings: this.settings,
       lastError: this.lastError,
       providerLabel: provider ? `${provider.name} · ${modelLabel(provider.model)}` : null,
@@ -262,7 +274,13 @@ export class HarnessRuntime {
       if (s && s.id && Array.isArray(s.messages)) {
         // 启动时修复历史会话中的悬空 tool_calls（页面刷新/崩溃留下的不合法序列）
         const fixed = repairSessionIntegrity(s)
-        if (fixed > 0) {
+        // 浏览器现实：重载后不可能有后台轮次 → 活动目标诚实转为暂停
+        if (s.goal?.status === 'active') {
+          s.goal.status = 'paused'
+          s.goal.note = '页面重载，已自动暂停（点击继续可恢复推进）'
+          s.goal.updatedAt = Date.now()
+        }
+        if (fixed > 0 || s.goal?.status === 'paused') {
           repaired = true
           if (!s.ops) s.ops = []
           s.ops.push({ op: 'repair', ts: Date.now(), note: `${fixed} dangling tool calls` })
@@ -355,19 +373,20 @@ export class HarnessRuntime {
     return this.status === 'running'
   }
 
-  async send(text: string): Promise<void> {
+  /** 发送一轮；返回 false 表示本轮未真正执行（守卫拦截，如缺 Key / 正在运行） */
+  async send(text: string): Promise<boolean> {
     const input = text.trim()
-    if (!input || this.status === 'running' || !this.session) return
+    if (!input || this.status === 'running' || !this.session) return false
     const provider = this.activeProvider()
     if (!provider || !provider.baseURL) {
       this.lastError = '未配置模型服务：请在设置中选择或填写 Provider（baseURL / model / apiKey）。'
       this.notify()
-      return
+      return false
     }
     if (!provider.apiKey && !/localhost|127\.0\.0\.1/.test(provider.baseURL)) {
       this.lastError = `Provider "${provider.name}" 缺少 API Key，请在设置中填写。`
       this.notify()
-      return
+      return false
     }
 
     if (this.session.messages.length === 0) {
@@ -424,6 +443,12 @@ export class HarnessRuntime {
     if (!result.ok && result.error && !result.aborted) {
       this.lastError = result.error
     }
+    // 用户主动中止 → 活动目标同步暂停（诚实语义：没有后台轮次）
+    if (result.aborted && this.session?.goal?.status === 'active') {
+      this.session.goal.status = 'paused'
+      this.session.goal.note = '用户停止，目标已暂停'
+      this.session.goal.updatedAt = Date.now()
+    }
     await this.persistSession()
     this.notify()
     // 水位超 80% → 自动压缩（LLM 摘要折叠早期消息，此后 token 按尾部计费）
@@ -431,6 +456,7 @@ export class HarnessRuntime {
     if (this.settings?.autoCompact !== 'off' && eff > CONTEXT_BUDGET_CHARS * 0.8) {
       void this.compactSession(true)
     }
+    return true
   }
 
   /**
@@ -525,9 +551,14 @@ export class HarnessRuntime {
 
   private subagentRunner = (): SubagentRunner => ({
     run: async (instruction: string, description?: string) => {
-      const provider = this.activeProvider()
+      // 多模型路由：子代理可用更便宜的 provider（设置中配置）
+      const provider =
+        this.settings?.providers.find((p) => p.id === this.settings?.subagentProviderId) ??
+        this.activeProvider()
       if (!provider) return { ok: false, report: '未配置模型服务' }
-      this.subagentNote = `子代理运行中：${description ?? '子任务'}`
+      const main = this.activeProvider()
+      const via = main && provider.id !== main.id ? ` · ${provider.name}/${provider.model}` : ''
+      this.subagentNote = `子代理运行中：${description ?? '子任务'}${via}`
       this.notify()
       const client = new LLMClient(this.deps.transport, {
         name: provider.name,
@@ -680,6 +711,108 @@ export class HarnessRuntime {
       this.composerPrefill = null
       this.notify()
     }
+  }
+
+  /* ---------------- 目标驱动（DSH goal 轮次驱动） ---------------- */
+
+  /** 用户发起目标：自动连续推进直到 complete/blocked/上限/用户暂停 */
+  startGoal(objective: string, maxRounds = 8): void {
+    if (this.status === 'running' || !this.session || !objective.trim()) return
+    const goal: GoalState = {
+      objective: objective.trim().slice(0, 500),
+      status: 'active',
+      rounds: 0,
+      maxRounds: Math.min(Math.max(Math.round(maxRounds) || 8, 1), 20),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    this.session.goal = goal
+    this.recordOp(this.session, 'goal', undefined, `start: ${goal.objective.slice(0, 40)}`)
+    void this.persistSession()
+    this.notify()
+    void this.driveGoal()
+  }
+
+  pauseGoal(note = '用户暂停'): void {
+    const g = this.session?.goal
+    if (!g || g.status !== 'active') return
+    g.status = 'paused'
+    g.note = note
+    g.updatedAt = Date.now()
+    void this.persistSession()
+    this.notify()
+  }
+
+  resumeGoal(): void {
+    const g = this.session?.goal
+    if (!g || g.status !== 'paused') return
+    g.status = 'active'
+    g.note = undefined
+    g.updatedAt = Date.now()
+    void this.persistSession()
+    this.notify()
+    void this.driveGoal()
+  }
+
+  cancelGoal(): void {
+    if (!this.session?.goal) return
+    this.recordOp(this.session, 'goal', undefined, 'cancel')
+    this.session.goal = undefined
+    void this.persistSession()
+    this.notify()
+  }
+
+  private async driveGoal(): Promise<void> {
+    if (this.goalLoopRunning) return
+    this.goalLoopRunning = true
+    try {
+      for (;;) {
+        const g = this.session?.goal
+        if (!g || g.status !== 'active' || g.rounds >= g.maxRounds) break
+        if (this.status !== 'idle') break // 用户正在交互，让位
+        g.rounds++
+        g.updatedAt = Date.now()
+        this.notify()
+        const ran = await this.send(
+          `[goal round ${g.rounds}/${g.maxRounds}] You are in goal-driven mode. Objective: "${g.objective}".\n` +
+            `Work the plan: do the next step, verify it, keep todos current. When the objective is fully met, call goal_update with status "complete" and summarize the outcome for the user. ` +
+            `If you cannot proceed, call goal_update with status "blocked" and explain in note. Avoid ask_user unless truly necessary.`,
+        )
+        if (!ran) break // 本轮未真正执行（缺配置/被占用）→ 停止驱动，等待用户处理
+        const after = this.session?.goal
+        if (!after || after.status !== 'active') break
+        if (after.rounds >= after.maxRounds) {
+          after.status = 'paused'
+          after.note = `已达轮次上限（${after.maxRounds}轮），自动暂停；可点击继续追加轮次`
+          after.updatedAt = Date.now()
+          void this.persistSession()
+          this.notify()
+          break
+        }
+      }
+    } finally {
+      this.goalLoopRunning = false
+    }
+  }
+
+  /* ---------------- 工作区快照（UI 入口） ---------------- */
+
+  async uiSaveSnapshot(label: string): Promise<WorkspaceSnapshot> {
+    const snap = await saveSnapshot(this.deps.kv, this.deps.fs, label)
+    this.snapRevCounter++
+    this.notify()
+    return snap
+  }
+
+  async uiRestoreSnapshot(id: string): Promise<void> {
+    await restoreSnapshot(this.deps.kv, this.deps.fs, id)
+    this.snapRevCounter++
+    this.fsRev++
+    this.notify()
+  }
+
+  async uiListSnapshots(): Promise<WorkspaceSnapshot[]> {
+    return listSnapshots(this.deps.kv)
   }
 
   /** 审批桥（JetBot Permission 思想）：risky 级工具批准一次，会话内记住 */

@@ -46,7 +46,10 @@ npm run dev        # http://localhost:5188
 
 | 能力 | 说明 |
 |---|---|
-| 多轮工具调用 | 13 个工具：`ls / read_file / write_file / edit_file / grep / glob / run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user / skill` |
+| 多轮工具调用 | 18 个工具：文件六件套 + `run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user / skill / goal_update / snapshot_save·restore·list·diff` |
+| 目标驱动 🎯 | 设定目标后自动连续推进（每轮完整 harness 循环），模型自报 complete/blocked；轮次上限、随时暂停/继续 |
+| 多模型路由 | 子代理可配置更便宜的模型（设置→模型服务），主会话保持强模型，token 成本自主调配 |
+| 工作区快照 | 轻量 git 化：保存/恢复/列表/对比，恢复前自动保护快照，任何操作可撤销 |
 | 技能系统 | `/skills/<名称>/SKILL.md` 自动入索引，`skill` 工具按需装载；智能体可自建技能沉淀工作流 |
 | 富格式渲染 | GFM 表格（含列对齐）、任务列表、删除线、嵌套列表、代码块复制；LaTeX 公式（`$..$`/`$$..$$`，Unicode 兜底 + KaTeX 精确渲染） |
 | 虚拟工作区 | OPFS 持久化文件系统（刷新不丢），支持导入/导出/下载 |

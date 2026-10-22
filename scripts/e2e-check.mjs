@@ -363,7 +363,28 @@ const userCountAfter = await page.locator('.msg-user').count()
 if (userCountAfter !== userCountBefore - 1) throw new Error(`编辑截断异常（${userCountBefore}→${userCountAfter}）`)
 console.log(`✓ Surface 编辑：原文预填输入区，消息截断（${userCountBefore}→${userCountAfter} 条用户消息）`)
 
-// 13. 输入区
+// 13. v0.3 UI：目标驱动弹窗/状态条 + 快照面板
+await page.click('.btn-icon[title*="目标驱动"]')
+await page.waitForSelector('.goal-modal', { timeout: 5_000 })
+await page.fill('.goal-input', 'e2e 演示目标：验证目标条 UI')
+await page.click('.goal-modal .btn-primary')
+await page.waitForTimeout(500)
+if (!(await page.isVisible('.goal-bar'))) throw new Error('目标条未显示')
+const goalText = await page.textContent('.goal-bar')
+if (!goalText.includes('e2e 演示目标')) throw new Error('目标条内容异常: ' + goalText.slice(0, 50))
+console.log('✓ 目标驱动：弹窗创建 → 状态条展示（缺 Key 守卫停转，不空烧）')
+await page.click('.goal-bar .btn-ghost:has-text("暂停")').catch(() => {})
+await page.waitForTimeout(200)
+
+// 快照 UI：保存 → 列表出现
+page.once('dialog', (d) => d.accept('e2e 快照'))
+await page.click('.snap-head .btn-ghost')
+await page.waitForTimeout(500)
+const snapRows = await page.locator('.snap-row').count()
+if (snapRows < 1) throw new Error('快照保存后列表为空')
+console.log(`✓ 工作区快照：保存并展示（${snapRows} 个）`)
+
+// 14. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')
 if (val !== '测试输入') throw new Error('输入框异常')

@@ -47,7 +47,10 @@ npm run dev        # http://localhost:5188
 
 | Capability | Details |
 |---|---|
-| Multi-turn tool calling | 13 tools: `ls / read_file / write_file / edit_file / grep / glob / run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user / skill` |
+| Multi-turn tool calling | 18 tools: the file suite + `run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user / skill / goal_update / snapshot_save·restore·list·diff` |
+| Goal-driven mode 🎯 | Set an objective and the agent auto-continues rounds (full harness loop each round) until it reports complete/blocked; round caps, pause/resume anytime |
+| Model routing | Sub-agents can run on a cheaper provider (Settings → Models) while the main session keeps the strong model |
+| Workspace snapshots | Lightweight git: save / restore / list / diff, with automatic protective snapshots — every restore is reversible |
 | Skills | `/skills/<name>/SKILL.md` auto-indexed into the system prompt; loaded on demand via the `skill` tool — the agent can even author new skills itself |
 | Rich rendering | GFM tables (with column alignment), task lists, strikethrough, nested lists, copyable code blocks; LaTeX math (`$..$`/`$$..$$`, Unicode fallback + precise KaTeX rendering) |
 | Virtual workspace | OPFS-persistent file system (survives reloads), with import / export / download |

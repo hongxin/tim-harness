@@ -7,8 +7,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileEntry } from '../../core/ports'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
-import { downloadBlob, downloadText, looksBinary, readFileAsBytes, readFileAsText } from '../fileops'
+import { downloadBlob, downloadText, looksBinary, readFileAsBytes, readFileAsText, relTime } from '../fileops'
+import type { WorkspaceSnapshot } from '../../core/workspace-snapshots'
 import { RP_WIDTH_DEFAULT, RP_WIDTH_MAX, RP_WIDTH_MIN } from '../App'
+
+function relTimeLite(ts: number): string {
+  return relTime(ts)
+}
 
 type Tab = 'files' | 'preview' | 'todos'
 type ConsoleEntry = { level: string; text: string; ts: number }
@@ -271,7 +276,20 @@ export function RightPanel({
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null)
   const [modal, setModal] = useState<{ path: string; content: string } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['/']))
+  const [snapshots, setSnapshots] = useState<WorkspaceSnapshot[]>([])
   const importInput = useRef<HTMLInputElement>(null)
+
+  const refreshSnapshots = useCallback(async () => {
+    try {
+      setSnapshots(await runtime.uiListSnapshots())
+    } catch {
+      setSnapshots([])
+    }
+  }, [runtime])
+
+  useEffect(() => {
+    void refreshSnapshots()
+  }, [refreshSnapshots, snapshot.snapRev])
 
   /* 文件列表：仅在文件系统真实变更（fsRev）或 tab 切换时刷新 */
   const refresh = useCallback(async () => {
@@ -504,6 +522,58 @@ export function RightPanel({
               {snapshot.skills.length > 3 && <span className="skill-chip more">+{snapshot.skills.length - 3}</span>}
             </div>
           )}
+          <div className="snap-section">
+            <div className="snap-head">
+              <span>📷 快照（轻量 git）</span>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                title="保存当前工作区为快照"
+                onClick={() => {
+                  const label = prompt('快照名称：', `手动快照 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`)
+                  if (label !== null) void runtime.uiSaveSnapshot(label).then(() => refreshSnapshots())
+                }}
+              >
+                保存
+              </button>
+            </div>
+            {snapshots.length === 0 ? (
+              <div className="snap-empty">暂无快照 · 保存后可随时精确恢复（恢复前自动保护）</div>
+            ) : (
+              snapshots.map((sn) => (
+                <div key={sn.id} className="snap-row" title={sn.label}>
+                  <span className="snap-label">{sn.label}</span>
+                  <span className="snap-meta">
+                    {Object.keys(sn.files).length} 文件 · {relTimeLite(sn.createdAt)}
+                  </span>
+                  <span className="snap-actions">
+                    <button
+                      type="button"
+                      className="ft-btn"
+                      title="恢复到此快照（当前状态将自动保护）"
+                      onClick={() => {
+                        if (confirm(`恢复到「${sn.label}」？当前工作区会先自动保存为保护快照。`)) {
+                          void runtime.uiRestoreSnapshot(sn.id).then(() => refreshSnapshots())
+                        }
+                      }}
+                    >
+                      ↩
+                    </button>
+                    <button
+                      type="button"
+                      className="ft-btn"
+                      title="下载快照 JSON"
+                      onClick={() =>
+                        downloadText(`tim-snapshot-${sn.id}.json`, JSON.stringify({ kind: 'tim-harness-snapshot', ...sn }, null, 2), 'application/json')
+                      }
+                    >
+                      ↓
+                    </button>
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
           {loading ? (
             <div className="rp-empty">读取中…</div>
           ) : files.length === 0 ? (

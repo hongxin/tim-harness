@@ -10,6 +10,13 @@ import { createRunJsTool } from './js'
 import { createWebTools } from './web'
 import { askUserTool, spawnAgentTool, todoWriteTool } from './workflow'
 import { skillTool } from './skills'
+import { goalUpdateTool } from './goal'
+import {
+  snapshotDiffTool,
+  snapshotListTool,
+  snapshotRestoreTool,
+  snapshotSaveTool,
+} from '../workspace-snapshots'
 
 export interface ToolDeps {
   transport: Transport
@@ -30,6 +37,11 @@ export function createMainRegistry(deps: ToolDeps): ToolRegistry {
     spawnAgentTool,
     askUserTool,
     skillTool,
+    goalUpdateTool,
+    snapshotSaveTool,
+    snapshotRestoreTool,
+    snapshotListTool,
+    snapshotDiffTool,
   ])
 }
 
@@ -45,6 +57,10 @@ export function createSubagentRegistry(deps: ToolDeps): ToolRegistry {
     ...createWebTools(deps.transport),
     todoWriteTool,
     skillTool,
+    snapshotSaveTool,
+    snapshotRestoreTool,
+    snapshotListTool,
+    snapshotDiffTool,
   ])
 }
 

@@ -1,4 +1,4 @@
-/** 顶栏：会话标题（可编辑）、模型信息、右侧面板开关 */
+/** 顶栏：会话标题（可编辑）、模型信息、目标驱动、右侧面板开关 */
 import { useEffect, useState } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
@@ -8,11 +8,13 @@ export function TopBar({
   runtime,
   rightOpen,
   onToggleRight,
+  onOpenGoal,
 }: {
   snapshot: RuntimeSnapshot
   runtime: HarnessRuntime
   rightOpen: boolean
   onToggleRight: () => void
+  onOpenGoal: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
@@ -51,6 +53,14 @@ export function TopBar({
       </div>
       <div className="topbar-right">
         {snapshot.providerLabel && <span className="model-chip">{snapshot.providerLabel}</span>}
+        <button
+          type="button"
+          className={`btn-icon ${snapshot.session?.goal ? 'on' : ''}`}
+          title={snapshot.session?.goal ? '目标驱动运行中 · 点击查看' : '目标驱动：设定目标后自动连续推进'}
+          onClick={onOpenGoal}
+        >
+          🎯
+        </button>
         <button
           type="button"
           className={`btn-icon ${snapshot.compacting ? 'on' : ''}`}

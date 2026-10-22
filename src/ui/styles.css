@@ -396,7 +396,48 @@ code, pre, .mono { font-family: var(--font-mono); }
 .md-body .katex { font-size: 1.05em; }
 .md-body .katex-display { margin: 0; }
 
-/* ---------------- 压缩分界卡 ---------------- */
+/* ---------------- 目标驱动 / 快照 ---------------- */
+
+.goal-bar {
+  display: flex; align-items: center; gap: 9px; padding: 7px 14px;
+  border-top: 1px solid var(--border); font-size: 12.5px; flex-wrap: wrap;
+}
+.goal-bar.goal-active { background: var(--accent-dim); color: var(--accent-text); }
+.goal-bar.goal-paused { background: var(--bg-panel-2); color: var(--text-dim); }
+.goal-bar.goal-complete { background: var(--accent-dim); color: var(--accent-text); }
+.goal-bar.goal-blocked { background: var(--red-dim); color: var(--red); }
+.goal-icon { flex-shrink: 0; }
+.goal-objective {
+  font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44%;
+}
+.goal-meta { color: inherit; opacity: 0.75; font-size: 11.5px; flex: 1; min-width: 120px; }
+.goal-actions { display: inline-flex; gap: 6px; margin-left: auto; }
+.goal-modal { max-width: 520px; }
+.goal-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  padding: 8px 10px; font-size: 13px; outline: none; resize: vertical; font-family: var(--font-ui);
+}
+.goal-input:focus { border-color: var(--accent); }
+.subagent-select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  padding: 7px 10px; font-size: 13px; outline: none; font-family: var(--font-mono);
+}
+
+.snap-section {
+  margin: 8px 0; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 8px; background: var(--bg-panel-2);
+}
+.snap-head { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--text-dim); margin-bottom: 4px; }
+.snap-empty { font-size: 11px; color: var(--text-faint); padding: 4px 0; }
+.snap-row {
+  display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11.5px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.snap-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); color: var(--text-dim); }
+.snap-meta { flex-shrink: 0; font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); }
+.snap-actions { display: inline-flex; gap: 2px; }
+
+/* ---------------- 压缩分界卡（保留） ---------------- */
 
 .compact-divider {
   border: 1px dashed var(--border-strong); border-radius: var(--radius);

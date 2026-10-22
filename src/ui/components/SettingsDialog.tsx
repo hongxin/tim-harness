@@ -146,6 +146,26 @@ export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; 
                 </div>
               </div>
             )}
+
+            <div className="form-block" style={{ marginTop: 4 }}>
+              <div className="form-block-title">子代理模型路由（省 token）</div>
+              <p className="form-desc">
+                spawn_agent 派发的子代理可使用更便宜的模型（如非思考型），主会话保持强模型。
+                质量/成本由你掌控。
+              </p>
+              <select
+                className="subagent-select"
+                value={draft.subagentProviderId ?? ''}
+                onChange={(e) => update((d) => { d.subagentProviderId = e.target.value || undefined })}
+              >
+                <option value="">跟随主模型</option>
+                {draft.providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.model || '未设置模型'}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
