@@ -642,8 +642,8 @@ const FINAL = () => [
   async function page_simulateLongHistory(rt: any) {
     const s = rt.getSnapshot().session
     for (let k = 0; k < 10; k++) {
-      s.messages.push({ role: 'user', content: `round-${k}-任务描述`.padEnd(400, `round-${String(k).padStart(2, '0')}-早期内容`) })
-      s.messages.push({ role: 'assistant', content: `round-${k} 回答 `.padEnd(400, 'x') })
+      s.messages.push({ role: 'user', content: `round-${k}-任务描述`.padEnd(1_200, `round-${String(k).padStart(2, '0')}-早期内容`) })
+      s.messages.push({ role: 'assistant', content: `round-${k} 回答 `.padEnd(1_200, 'x') })
     }
     s.messages.push({ role: 'user', content: '最后一问' })
   }
@@ -925,8 +925,8 @@ const FINAL = () => [
   })
   const s15 = rt15d.getSnapshot().session!
   for (let i = 0; i < 5; i++) {
-    s15.messages.push({ role: 'user', content: `早期任务${i}` })
-    s15.messages.push({ role: 'assistant', content: `早期回答${i}` })
+    s15.messages.push({ role: 'user', content: `早期任务${i}`.padEnd(1_300, '背景') })
+    s15.messages.push({ role: 'assistant', content: `早期回答${i}`.padEnd(1_300, 'y') })
   }
   s15.messages.push({ role: 'user', content: '新任务一' })
   s15.messages.push({ role: 'assistant', content: '新回答一' })
@@ -1014,6 +1014,78 @@ const FINAL = () => [
   assert(raw16 > eco16.budgetChars, `水位修复：原始体量超预算（${raw16} > ${eco16.budgetChars}，压力表曾显示 100%）`)
   assert(sent16 <= eco16.budgetChars, `水位修复：折叠后实际发送在预算内（sent=${sent16}）`)
   assert(sent16 < raw16 * 0.7, `水位修复：实际发送显著低于原始（${sent16} vs ${raw16}）`)
+}
+
+/* ---------------- 17. 压缩守卫修复：胖而短会话不再漏网 ---------------- */
+
+{
+  // 17a. 手动压缩：少而肥的会话（lastUser=4 < 旧条数守卫 6）现在按字符量放行
+  const kv17 = new MapKV()
+  const fs17 = new TestFS()
+  const t17 = new ScriptedTransport([
+    [sse({ choices: [{ index: 0, delta: { content: '摘要：完成了两部分分析' }, finish_reason: 'stop' }] })],
+  ])
+  const rt17 = new HarnessRuntime({
+    kv: kv17, fs: fs17, transport: t17,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt17.boot()
+  await rt17.saveSettings({
+    providers: [{ id: 'mock', name: 'M', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'm' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null, costTier: 'eco',
+  })
+  const s17 = rt17.getSnapshot().session!
+  s17.messages.push({ role: 'user', content: '分析第一部分' })
+  s17.messages.push({ role: 'assistant', content: null, tool_calls: [{ id: 'q1', name: 'read_file', arguments: '{"path":"/f1"}' }] })
+  s17.messages.push({ role: 'tool', tool_call_id: 'q1', name: 'read_file', content: 'x'.repeat(8_000) })
+  s17.messages.push({ role: 'assistant', content: '第一部分结论如上' })
+  s17.messages.push({ role: 'user', content: '分析第二部分' }) // lastUser=4：旧的"<6条"守卫在此拦截
+  const manual17 = await rt17.compactSession(false)
+  assert(manual17, '守卫修复：胖而短会话（4条早期消息+8k结果）可手动压缩')
+
+  // 17b. 自动压缩按 sent（折叠后实际发送）触发：胖头部 + 胖当前回合
+  const kv17b = new MapKV()
+  const t17b = new ScriptedTransport([
+    // 第一请求：本轮的超长回答（60k → sent 超阈值）
+    [sse({ choices: [{ index: 0, delta: { content: '详尽结论。'.repeat(10_000) }, finish_reason: 'stop' }] })],
+    // 第二请求：自动压缩的摘要调用
+    [sse({ choices: [{ index: 0, delta: { content: '增量摘要OK' }, finish_reason: 'stop' }] })],
+  ])
+  const rt17b = new HarnessRuntime({
+    kv: kv17b, fs: new TestFS(), transport: t17b,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt17b.boot()
+  await rt17b.saveSettings({
+    providers: [{ id: 'mock', name: 'M', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'm' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null, costTier: 'eco',
+  })
+  const s17b = rt17b.getSnapshot().session!
+  s17b.messages.push({ role: 'user', content: '第一任务' })
+  s17b.messages.push({ role: 'assistant', content: null, tool_calls: [{ id: 'w1', name: 'read_file', arguments: '{"path":"/a"}' }] })
+  s17b.messages.push({ role: 'tool', tool_call_id: 'w1', name: 'read_file', content: 'y'.repeat(8_000) })
+  s17b.messages.push({ role: 'assistant', content: '任务一完成' })
+  await rt17b.send('第二任务')
+  await new Promise((r) => setTimeout(r, 150)) // 等自动压缩完成
+  const cb = rt17b.getSnapshot().session!.compacted
+  assert(!!cb && cb.foldedCount === 4, `守卫修复：自动压缩按 sent 触发并折叠头部（folded=${cb?.foldedCount}）`)
+  assert(cb!.summary.includes('增量摘要OK'), '守卫修复：增量摘要内容正确')
+
+  // 17c. 头部字符量过小仍被拒绝（避免无谓的摘要调用）
+  const rt17c = new HarnessRuntime({
+    kv: new MapKV(), fs: new TestFS(), transport: new ScriptedTransport([]),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt17c.boot()
+  await rt17c.saveSettings({
+    providers: [{ id: 'mock', name: 'M', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'm' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null,
+  })
+  rt17c.getSnapshot().session!.messages.push({ role: 'user', content: 'hi' })
+  rt17c.getSnapshot().session!.messages.push({ role: 'assistant', content: 'ok' })
+  rt17c.getSnapshot().session!.messages.push({ role: 'user', content: 'again' })
+  const tiny = await rt17c.compactSession(false)
+  assert(tiny === false, '守卫修复：头部过小的会话仍拒绝压缩（省摘要调用）')
 }
 
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

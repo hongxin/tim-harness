@@ -462,10 +462,11 @@ export class HarnessRuntime {
     }
     await this.persistSession()
     this.notify()
-    // 水位超档位阈值 → 自动压缩（LLM 摘要折叠早期消息，此后 token 按尾部计费）
+    // 自动压缩：按"折叠后实际发送水位"触发（与 UI 水位表同源同语义）
     const policy = tierPolicy(this.settings)
-    const eff = buildContextView(effectiveMessages(this.session), policy.budgetChars, policy.recentFullResults).info.estChars
-    if (this.settings?.autoCompact !== 'off' && eff > policy.budgetChars * policy.autoCompactAt) {
+    const effView = buildContextView(effectiveMessages(this.session), policy.budgetChars, policy.recentFullResults)
+    const sentChars = estimateChars(effView.messages)
+    if (this.settings?.autoCompact !== 'off' && sentChars > policy.budgetChars * policy.autoCompactAt) {
       void this.compactSession(true)
     }
     return true
@@ -495,15 +496,29 @@ export class HarnessRuntime {
         break
       }
     }
-    if (lastUser < 6) {
+    if (lastUser < 2) {
       if (!auto) {
-        this.lastError = '会话内容还太少，暂不值得压缩（至少需要 6 条早期消息）。'
+        this.lastError = '会话还没有可折叠的早期内容。'
         this.notify()
       }
       return false
     }
-    // 已压缩且新增不足 → 跳过自动
-    if (auto && s.compacted && lastUser - s.compacted.foldedCount < 6) return false
+    const policy = tierPolicy(this.settings)
+    // 守卫按"字符量"而非消息条数——胖而短的会话（少而肥的工具结果）同样需要压缩
+    const headChars = estimateChars(s.messages.slice(0, lastUser))
+    const minWorth = Math.max(4_000, policy.budgetChars * 0.08)
+    if (headChars < minWorth) {
+      if (!auto) {
+        this.lastError = `可折叠的早期内容还太少（约 ${headChars.toLocaleString()} 字符，低于 ${minWorth.toLocaleString()}），暂不值得压缩。`
+        this.notify()
+      }
+      return false
+    }
+    // 已压缩且新增段字符量不足 → 跳过自动
+    if (auto && s.compacted && lastUser > s.compacted.foldedCount) {
+      const segChars = estimateChars(s.messages.slice(s.compacted.foldedCount, lastUser))
+      if (segChars < Math.max(2_000, policy.budgetChars * 0.05)) return false
+    }
     // 已压缩且无新增内容（手动触发也无事可做）
     if (s.compacted && lastUser === s.compacted.foldedCount) {
       if (!auto) {
@@ -523,7 +538,6 @@ export class HarnessRuntime {
         model: provider.model,
         temperature: 0,
       })
-      const policy = tierPolicy(this.settings)
       // 增量压缩：已有摘要时只总结 [foldedCount, lastUser) 新增段，追加到摘要尾部
       // （单次成本只与新段相关 → 可以放心在高频阈值下触发）
       const prev = s.compacted
