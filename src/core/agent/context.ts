@@ -41,7 +41,7 @@ export function estimateChars(messages: ChatMessage[]): number {
     if (m.tool_calls) {
       for (const tc of m.tool_calls) n += tc.arguments.length + tc.name.length + 24
     }
-    n += m.args?.length ?? 0
+    // 注：tool 消息的 args 是本地展示字段（toWireMessage 会剥离），不计入发送估算
   }
   return n
 }

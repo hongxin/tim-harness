@@ -228,8 +228,13 @@ export class AgentRunner {
         const durationMs = Date.now() - t0
 
         // 重复失败检测：同一工具 + 同一参数连续失败 → 注入换策略警告
-        // （先做中段修剪：超长工具结果保头尾删中段，防胖历史——DSH pruner 思想）
-        let output = pruneMiddle(result.output)
+        // （先做中段修剪：超长工具结果保头尾删中段，防胖历史——DSH pruner 思想，档位化参数）
+        const prune = tierPolicy(ctx.state.settings)
+        let output = pruneMiddle(result.output, {
+          threshold: prune.pruneThreshold,
+          head: prune.pruneHead,
+          tail: prune.pruneTail,
+        })
         if (!result.ok) {
           const sig = `${call.name}:${call.arguments}`
           if (sig === lastFailedSignature) {

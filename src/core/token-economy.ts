@@ -20,24 +20,34 @@ export interface TierPolicy {
   fetchMax: number
   /** 折叠时保持全文的最近 N 条工具结果 */
   recentFullResults: number
+  /** 工具结果中段修剪参数（DSH pruner，档位化） */
+  pruneThreshold: number
+  pruneHead: number
+  pruneTail: number
 }
 
 export const TIER_POLICIES: Record<CostTier, TierPolicy> = {
   eco: {
-    budgetChars: 48_000,
-    autoCompactAt: 0.5,
+    budgetChars: 80_000,
+    autoCompactAt: 0.62,
     readMax: 32_000,
     grepMax: 60,
     fetchMax: 24_000,
     recentFullResults: 2,
+    pruneThreshold: 4_096,
+    pruneHead: 2_048,
+    pruneTail: 512,
   },
   standard: {
-    budgetChars: 120_000,
-    autoCompactAt: 0.65,
+    budgetChars: 140_000,
+    autoCompactAt: 0.68,
     readMax: 80_000,
     grepMax: 100,
     fetchMax: 60_000,
     recentFullResults: 3,
+    pruneThreshold: 8_192,
+    pruneHead: 4_096,
+    pruneTail: 1_024,
   },
   full: {
     budgetChars: 260_000,
@@ -46,6 +56,9 @@ export const TIER_POLICIES: Record<CostTier, TierPolicy> = {
     grepMax: 200,
     fetchMax: 100_000,
     recentFullResults: 4,
+    pruneThreshold: 8_192,
+    pruneHead: 4_096,
+    pruneTail: 1_024,
   },
 }
 

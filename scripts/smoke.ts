@@ -612,14 +612,14 @@ const FINAL = () => [
   // 注入长历史（10 轮对话，最后一轮 user 在末尾）
   await page_simulateLongHistory(runtime7)
   ;(runtime7 as any).notify() // 直接改 session 后手动刷新快照（正常路径由事件驱动）
-  const before = runtime7.getSnapshot().contextInfo!.estChars
+  const before = runtime7.getSnapshot().contextInfo!.rawChars
   const okCompact = await runtime7.compactSession(false)
   assert(okCompact, '压缩：手动压缩成功')
   const s7 = runtime7.getSnapshot()
   const c = s7.session!.compacted!
   assert(!!c && c.summary.includes('已完成 A/B'), '压缩：LLM 摘要已生成并保存')
   assert(c.foldedCount === 20, `压缩：折叠边界=最后一条 user 之前（folded=${c.foldedCount}）`)
-  const after = s7.contextInfo!.estChars
+  const after = s7.contextInfo!.rawChars
   assert(after < before * 0.5, `压缩：有效上下文显著下降（${before} → ${after}）`)
   // 后续对话只发"摘要+尾部"
   await runtime7.send('继续')
@@ -878,7 +878,7 @@ const FINAL = () => [
   const { buildContextView } = await import('../src/core/agent/context')
   const eco = tierPolicy({ costTier: 'eco' })
   const full = tierPolicy({ costTier: 'full' })
-  assert(eco.budgetChars < full.budgetChars / 4 && eco.readMax < full.readMax, 'Token经济：省流档位全面收紧')
+  assert(eco.budgetChars < full.budgetChars / 2 && eco.readMax < full.readMax && eco.pruneThreshold < full.pruneThreshold, 'Token经济：省流档位全面收紧')
   const mkLong = (n: number) => [
     { role: 'user', content: `q${n}` },
     { role: 'assistant', content: null, tool_calls: [{ id: `c${n}`, name: 'read_file', arguments: '{}' }] },
@@ -886,7 +886,7 @@ const FINAL = () => [
     { role: 'assistant', content: `a${n}` },
   ]
   const msgs15: any[] = []
-  for (let i = 0; i < 8; i++) msgs15.push(...mkLong(i))
+  for (let i = 0; i < 14; i++) msgs15.push(...mkLong(i))
   const ecoView = buildContextView(msgs15, eco.budgetChars, eco.recentFullResults)
   const stdView = buildContextView(msgs15, tierPolicy({ costTier: 'standard' }).budgetChars, tierPolicy({ costTier: 'standard' }).recentFullResults)
   assert(ecoView.messages.length < stdView.messages.length || ecoView.info.maskedResults > stdView.info.maskedResults, 'Token经济：eco 档位折叠/丢块更激进')
@@ -985,6 +985,35 @@ const FINAL = () => [
   // 无新增时手动压缩被拒绝
   const again = await rt15d.compactSession(false)
   assert(again === false, '增量压缩：无新增内容时拒绝空压缩')
+}
+
+/* ---------------- 16. 水位语义修复：显示"实际发送"而非"折叠前压力" ---------------- */
+
+{
+  const { buildContextView, estimateChars } = await import('../src/core/agent/context')
+  const { tierPolicy } = await import('../src/core/token-economy')
+  const msgs16: any[] = [
+    { role: 'assistant', content: null, tool_calls: [{ id: 'x1', name: 'write_file', arguments: '{"path":"/a.ts","content":"..."}' }] },
+    { role: 'tool', tool_call_id: 'x1', name: 'write_file', args: '{"path":"/a.ts","content":"..."}', content: 'ok' },
+  ]
+  const est16 = estimateChars(msgs16)
+  const argsLen = '{"path":"/a.ts","content":"..."}'.length
+  assert(est16 < 2 * argsLen + 200, `水位修复：工具参数不再双重计数（est=${est16}）`)
+
+  const eco16 = tierPolicy({ costTier: 'eco' })
+  const fat16: any[] = []
+  for (let i = 0; i < 14; i++) {
+    fat16.push({ role: 'user', content: `task ${i}` })
+    fat16.push({ role: 'assistant', content: null, tool_calls: [{ id: `t${i}`, name: 'read_file', arguments: '{"path":"f"}' }] })
+    fat16.push({ role: 'tool', tool_call_id: `t${i}`, name: 'read_file', content: 'x'.repeat(8_000) })
+    fat16.push({ role: 'assistant', content: '结论'.repeat(200) })
+  }
+  const view16 = buildContextView(fat16, eco16.budgetChars, eco16.recentFullResults)
+  const raw16 = view16.info.estChars
+  const sent16 = estimateChars(view16.messages)
+  assert(raw16 > eco16.budgetChars, `水位修复：原始体量超预算（${raw16} > ${eco16.budgetChars}，压力表曾显示 100%）`)
+  assert(sent16 <= eco16.budgetChars, `水位修复：折叠后实际发送在预算内（sent=${sent16}）`)
+  assert(sent16 < raw16 * 0.7, `水位修复：实际发送显著低于原始（${sent16} vs ${raw16}）`)
 }
 
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

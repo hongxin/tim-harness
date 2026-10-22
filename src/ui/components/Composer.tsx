@@ -45,7 +45,9 @@ export function Composer({
 
   const est = snapshot.session ? Math.round(((snapshot.session.usage.total_tokens ?? 0)) ) : 0
   const ctx = snapshot.contextInfo
-  const ctxPct = ctx ? Math.min(100, Math.round((ctx.estChars / ctx.budgetChars) * 100)) : 0
+  // 水位显示"折叠后实际发送"（真实成本）；原始体量与折叠状态放提示与角标
+  const ctxPct = ctx ? Math.min(100, Math.round((ctx.sentChars / ctx.budgetChars) * 100)) : 0
+  const rawPct = ctx ? Math.round((ctx.rawChars / ctx.budgetChars) * 100) : 0
   const usage = snapshot.session?.usage
   const cacheTotal = (usage?.prompt_cache_hit_tokens ?? 0) + (usage?.prompt_cache_miss_tokens ?? 0)
   const cachePct = cacheTotal > 0 ? Math.round(((usage?.prompt_cache_hit_tokens ?? 0) / cacheTotal) * 100) : null
@@ -95,12 +97,12 @@ export function Composer({
       <div className="composer-meta">
         <span>{running ? '智能体运行中 · 工具调用与结果实时展示在上方' : '支持多轮工具调用 · 虚拟工作区 · JS 沙箱 · 子代理'}</span>
         <span className="meta-chips">
-          {ctx && ctx.estChars > 30_000 && (
+          {ctx && ctx.sentChars > 12_000 && (
             <span
-              className={`ctx-chip ${ctx.masked ? 'ctx-masked' : ctxPct > 80 ? 'ctx-high' : ''}`}
-              title={`上下文估算 ${ctx.estChars.toLocaleString()} / ${ctx.budgetChars.toLocaleString()} 字符${ctx.masked ? '，已自动折叠早期工具输出（完整记录保留在会话中）' : ''}`}
+              className={`ctx-chip ${ctx.masked ? 'ctx-masked' : ctxPct > 85 ? 'ctx-high' : ''}`}
+              title={`实际发送估算 ${ctx.sentChars.toLocaleString()} / 预算 ${ctx.budgetChars.toLocaleString()} 字符（折叠后）\n会话原始体量 ${ctx.rawChars.toLocaleString()} 字符（${rawPct}%）${ctx.masked ? '\n已自动折叠早期工具输出——完整记录保留在会话中，实际发送的水位才是真实成本' : ''}`}
             >
-              上下文 {ctxPct}%{ctx.masked ? ' · 已折叠' : ''}
+              上下文 {ctxPct}%{ctx.masked ? ` · 已折叠(原 ${rawPct}%)` : ''}
             </span>
           )}
           {cachePct !== null && (

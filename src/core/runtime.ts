@@ -53,7 +53,10 @@ export interface PendingApproval {
 }
 
 export interface ContextInfo {
-  estChars: number
+  /** 折叠前原始估算（压力指标：会话真实体量） */
+  rawChars: number
+  /** 折叠后实际发送给模型的估算（真实成本水位） */
+  sentChars: number
   budgetChars: number
   masked: boolean
 }
@@ -172,8 +175,13 @@ export class HarnessRuntime {
     let contextInfo: ContextInfo | null = null
     if (this.session) {
       const policy = tierPolicy(this.settings)
-      const info = buildContextView(effectiveMessages(this.session), policy.budgetChars, policy.recentFullResults).info
-      contextInfo = { estChars: info.estChars, budgetChars: info.budgetChars, masked: info.masked }
+      const view = buildContextView(effectiveMessages(this.session), policy.budgetChars, policy.recentFullResults)
+      contextInfo = {
+        rawChars: view.info.estChars,
+        sentChars: estimateChars(view.messages),
+        budgetChars: view.info.budgetChars,
+        masked: view.info.masked,
+      }
     }
     return {
       rev: this.rev,
