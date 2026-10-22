@@ -1,5 +1,7 @@
 # Tim Harness
 
+中文 | **[English](README.en.md)**
+
 **装进一个浏览器页面的随身大模型工程 Harness。**
 
 [![CI](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml)
@@ -79,7 +81,7 @@ src/
 
 **为什么 core 要平台无关？** 长期目标是微信小程序版（wx.request / wx storage /
 wx FileSystemManager 适配器）。core 的可移植性由 `npm run smoke` 持续验证：
-在纯 Node 中以 mock 适配器跑通完整 agent loop（22 项断言）。
+在纯 Node 中以 mock 适配器跑通完整 agent loop（34 项断言）。
 
 ## 开发命令
 
