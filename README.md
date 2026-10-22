@@ -65,6 +65,7 @@ npm run dev        # http://localhost:5188
 
 > 💰 **省 token 小贴士**（[调研详情](docs/04-context-economy-research.md)）：DeepSeek 前缀缓存命中价仅为未命中的 **1/50**（flash 空闲时段 0.02 vs 1 元/百万 tokens）——THN 的双通道提示词 + 只追加历史天然吃满缓存，优化到位实测可省 **84-90%** 输入费用；另：**空闲时段（夜间/周末）全部半价**，长任务尽量安排在空闲时段跑。
 | 拖拽导入 | 文件拖入窗口即入虚拟工作区；工具卡"静默成功、喧哗失败" |
+| 小程序 PoC 🧪 | wx 四件适配器验证 core 零改动移植（request 分块 SSE / Storage / FileSystemManager / 沙箱诚实降级），[详见文档](docs/05-wechat-poc.md) |
 | 子代理 | `spawn_agent` 派生独立上下文的子任务，节省主会话上下文 |
 | 任务清单 | 智能体用 `todo_write` 维护计划，右侧面板实时投影 |
 | 流式渲染 | 内容/思考链/工具调用全程流式，可随时停止 |
@@ -104,6 +105,7 @@ npm run dev         # 开发服务器 http://localhost:5188
 npm run build       # 生产构建（dist/）
 npm run typecheck   # 全仓 strict 类型检查
 npm run smoke       # Node 中跑 core 冒烟测试（可移植性保障）
+npm run smoke:wechat        # 微信小程序 PoC 冒烟（wx 适配器 + 模拟环境）
 node scripts/e2e-check.mjs   # 真实浏览器端到端检查（需 dev server + playwright）
 ```
 

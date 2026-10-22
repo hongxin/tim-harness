@@ -159,8 +159,10 @@ edit 唯一匹配、超时上限、失败换策略）；错误信息必须包含
   - ✅ **工作区快照（轻量 git 化）**：snapshot_save/restore/list/diff 四工具 +
     右面板快照区；恢复前自动保护快照（任何恢复可撤销）、精确恢复语义（含删除多余文件）、
     保留最近 20 个
-- **v1.0 小程序版**：`core` 原样移植 + wx 适配器四件套；UI 层用小程序组件重写
-  （UI 与 core 本就单向数据流，`useSyncExternalStore` 的订阅模型可平移为小程序 store）。
+- **v1.0 小程序版（PoC ✅ 已验证，见 docs/05-wechat-poc.md）**：wx 四件适配器
+  （request 分块 SSE / Storage / FileSystemManager / 沙箱诚实降级）在 wx 模拟环境中
+  11 项端到端断言全过 —— core **零改动**原样运行，含中文多字节 SSE 跨块重组与重启恢复；
+  core/llm/sse.ts 补齐无 TextDecoder 环境的纯 JS UTF-8 兜底。剩余：小程序 UI 层与域名配置。
 
 **复盘结论**：前期被真实使用反馈牵引完成大量体验与正确性增强（方向正确，这是产品活下来的基础）；
 v0.2 剩余两项均为架构性重构，宜各专一轮实施，避免与功能演进互相干扰。

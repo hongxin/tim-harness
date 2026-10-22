@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "build:smoke": "vite build --config vite.smoke.config.ts",
-    "smoke": "npm run build:smoke && node dist-smoke/smoke.mjs"
+    "smoke": "npm run build:smoke && node dist-smoke/smoke.mjs",
+    "build:wechat-smoke": "vite build --config vite.wechat-smoke.config.ts",
+    "smoke:wechat": "npm run build:wechat-smoke && node dist-wechat-smoke/wechat-smoke.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

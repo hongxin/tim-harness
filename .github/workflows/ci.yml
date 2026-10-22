@@ -20,5 +20,7 @@ jobs:
         run: npx tsc --noEmit
       - name: Core smoke（Node 中验证平台无关核心）
         run: npm run smoke
+      - name: WeChat PoC smoke（wx 适配器端到端）
+        run: npm run smoke:wechat
       - name: Build
         run: npm run build

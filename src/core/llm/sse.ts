@@ -12,8 +12,44 @@ export interface SSEEvent {
   data: string
 }
 
+/** UTF-8 解码：优先 TextDecoder；小程序等环境缺失时用纯 JS 实现（含多字节跨 chunk 拼接） */
+function makeDecoder(): (chunk: Uint8Array, stream: boolean) => string {
+  if (typeof TextDecoder !== 'undefined') {
+    const td = new TextDecoder('utf-8', { fatal: false })
+    return (chunk, stream) => td.decode(chunk, { stream })
+  }
+  let pending = 0
+  let codepoint = 0
+  let min = 0
+  let out = ''
+  const push = (byte: number) => {
+    if (pending === 0) {
+      if (byte < 0x80) return String.fromCharCode(byte)
+      if (byte >= 0xf0) { pending = 3; codepoint = byte & 0x07; min = 0x10000 }
+      else if (byte >= 0xe0) { pending = 2; codepoint = byte & 0x0f; min = 0x800 }
+      else if (byte >= 0xc0) { pending = 1; codepoint = byte & 0x1f; min = 0x80 }
+      else return '\uFFFD'
+      return ''
+    }
+    if ((byte & 0xc0) !== 0x80) { pending = 0; return '\uFFFD' }
+    codepoint = (codepoint << 6) | (byte & 0x3f)
+    pending--
+    if (pending > 0) return ''
+    const cp = codepoint
+    codepoint = 0
+    if (cp < min || (cp >= 0xd800 && cp <= 0xdfff)) return '\uFFFD'
+    return String.fromCodePoint(cp)
+  }
+  return (chunk, stream = true) => {
+    out = ''
+    for (const b of chunk) out += push(b)
+    if (!stream && pending !== 0) { pending = 0; out += '\uFFFD' }
+    return out
+  }
+}
+
 export async function* parseSSE(bytes: AsyncIterable<Uint8Array>): AsyncGenerator<SSEEvent> {
-  const decoder = new TextDecoder('utf-8', { fatal: false })
+  const decode = makeDecoder()
   let buffer = ''
 
   const tryYield = function* (raw: string): Generator<SSEEvent> {
@@ -35,7 +71,7 @@ export async function* parseSSE(bytes: AsyncIterable<Uint8Array>): AsyncGenerato
   }
 
   for await (const chunk of bytes) {
-    buffer += decoder.decode(chunk, { stream: true })
+    buffer += decode(chunk, true)
     // 按事件分隔符切分，保留最后一段不完整的
     let idx: number
     while ((idx = buffer.search(/\r?\n\r?\n/)) !== -1) {
@@ -45,6 +81,6 @@ export async function* parseSSE(bytes: AsyncIterable<Uint8Array>): AsyncGenerato
       yield* tryYield(raw)
     }
   }
-  buffer += decoder.decode()
+  buffer += decode(new Uint8Array(0), false)
   if (buffer.trim()) yield* tryYield(buffer)
 }

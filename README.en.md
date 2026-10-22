@@ -64,6 +64,7 @@ npm run dev        # http://localhost:5188
 | Dual-channel prompt | Stable system section is byte-identical across turns (provider prefix-cache hits, lower cost); volatile facts arrive as a "supersedes" snapshot at the end |
 | Token economy | Five cost defenses: slim tool outputs (offset/limit paging) → prefix caching (live hit-rate gauge) → view folding → **incremental compaction** (second pass costs only the delta) → cost tiers (eco/standard/full, one switch) |
 | Drag & drop | Drop files anywhere to import them into the workspace; tool cards "quiet on success, loud on failure" |
+| WeChat PoC 🧪 | Four wx adapters prove the core ports over unmodified (chunked SSE / Storage / FileSystemManager / honest sandbox degradation) — [see docs](docs/05-wechat-poc.md) |
 | Sub-agents | `spawn_agent` runs self-contained tasks in a fresh context to conserve the main conversation |
 | Task list | The agent maintains its plan with `todo_write`, projected live in the side panel |
 | Streaming | Content / reasoning / tool calls all stream in real time; stop at any moment |
@@ -104,6 +105,7 @@ npm run dev         # Dev server at http://localhost:5188
 npm run build       # Production build (dist/)
 npm run typecheck   # Strict typecheck for the whole repo
 npm run smoke       # Core smoke test in Node (portability guarantee)
+npm run smoke:wechat        # WeChat mini-program PoC smoke (wx adapters + mock env)
 node scripts/e2e-check.mjs   # Real-browser end-to-end checks (needs dev server + playwright)
 ```
 
