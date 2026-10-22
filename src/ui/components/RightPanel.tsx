@@ -561,6 +561,18 @@ export function RightPanel({
                     </button>
                     <button
                       type="button"
+                      className="ft-btn snap-del"
+                      title="删除此快照（不影响工作区文件）"
+                      onClick={() => {
+                        if (confirm(`删除快照「${sn.label}」？此操作不可恢复（工作区文件不受影响）。`)) {
+                          void runtime.uiDeleteSnapshot(sn.id).then(() => refreshSnapshots())
+                        }
+                      }}
+                    >
+                      ✕
+                    </button>
+                    <button
+                      type="button"
                       className="ft-btn"
                       title="下载快照 JSON"
                       onClick={() =>

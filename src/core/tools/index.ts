@@ -12,6 +12,7 @@ import { askUserTool, spawnAgentTool, todoWriteTool } from './workflow'
 import { skillTool } from './skills'
 import { goalUpdateTool } from './goal'
 import {
+  snapshotDeleteTool,
   snapshotDiffTool,
   snapshotListTool,
   snapshotRestoreTool,
@@ -42,6 +43,7 @@ export function createMainRegistry(deps: ToolDeps): ToolRegistry {
     snapshotRestoreTool,
     snapshotListTool,
     snapshotDiffTool,
+    snapshotDeleteTool,
   ])
 }
 

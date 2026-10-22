@@ -30,6 +30,7 @@ import { scanSkills, type SkillMeta } from './tools/skills'
 import { buildContextView, estimateChars } from './agent/context'
 import { tierPolicy } from './token-economy'
 import {
+  deleteSnapshot,
   listSnapshots,
   restoreSnapshot,
   saveSnapshot,
@@ -867,6 +868,16 @@ export class HarnessRuntime {
     this.snapRevCounter++
     this.fsRev++
     this.notify()
+  }
+
+  /** 删除指定快照（不影响工作区文件） */
+  async uiDeleteSnapshot(id: string): Promise<boolean> {
+    const okDel = await deleteSnapshot(this.deps.kv, id)
+    if (okDel) {
+      this.snapRevCounter++
+      this.notify()
+    }
+    return okDel
   }
 
   async uiListSnapshots(): Promise<WorkspaceSnapshot[]> {

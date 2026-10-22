@@ -64,8 +64,15 @@ export async function saveSnapshot(
   return snap
 }
 
-export async function listSnapshots(kv: KVStore): Promise<WorkspaceSnapshot[]> {
-  const keys = await kv.keys(PREFIX)
+/** 删除指定快照（不可恢复；不影响工作区文件） */
+export async function deleteSnapshot(kv: KVStore, id: string): Promise<boolean> {
+  const snap = await kv.get<WorkspaceSnapshot>(PREFIX + id)
+  if (!snap) return false
+  await kv.delete(PREFIX + id)
+  return true
+}
+
+export async function listSnapshots(kv: KVStore): Promise<WorkspaceSnapshot[]> {  const keys = await kv.keys(PREFIX)
   const snaps: WorkspaceSnapshot[] = []
   for (const k of keys) {
     const s = await kv.get<WorkspaceSnapshot>(k)
@@ -180,6 +187,26 @@ export const snapshotRestoreTool: ToolDef = {
     } catch (e) {
       return err(e instanceof Error ? e.message : String(e))
     }
+  },
+}
+
+export const snapshotDeleteTool: ToolDef = {
+  name: 'snapshot_delete',
+  description:
+    'Delete a workspace snapshot by id (frees storage; does NOT touch current workspace files). Irreversible — confirm with the user unless the snapshot was clearly temporary (e.g. pre-restore auto-protection).',
+  parameters: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Snapshot id from snapshot_list' },
+    },
+    required: ['id'],
+  },
+  async execute(args, ctx) {
+    const id = String(args.id ?? '').trim()
+    if (!id) return err('缺少快照 id')
+    const okDel = await deleteSnapshot(ctx.kv, id)
+    if (!okDel) return err(`快照 ${id} 不存在（可能已被删除）`)
+    return { ok: true, output: `快照 ${id} 已删除（工作区文件不受影响）。` }
   },
 }
 

@@ -845,6 +845,19 @@ const FINAL = () => [
   assert(newJsGone, '快照：多余文件被精确移除')
   const r3 = await reg14.get('snapshot_list')!.execute({}, ctx14 as any)
   assert(r3.ok && r3.output!.includes('v1 基线') && r3.output!.includes('保护'), '快照：列表含基线与保护快照')
+  // 删除：按 id 删除基线快照，列表不再包含；删除不存在 id 报错
+  const baseId = (r3.output!.split('\n').find((l: string) => /^#snap_\w+ 「v1 基线」/.test(l))?.match(/^#(snap_\w+)/) ?? [])[1]
+  assert(!!baseId, '快照：测试定位到基线快照 id')
+  const del1 = await reg14.get('snapshot_delete')!.execute({ id: baseId }, ctx14 as any)
+  assert(del1.ok, '快照：按 id 删除成功')
+  const r4 = await reg14.get('snapshot_list')!.execute({}, ctx14 as any)
+  assert(
+    !r4.output!.split('\n').some((l: string) => /^#snap_\w+ 「v1 基线」/.test(l)),
+    '快照：删除后列表不再包含基线行（保护快照仍在，名中含同词属正常）',
+  )
+  const del2 = await reg14.get('snapshot_delete')!.execute({ id: 'snap_nonexistent' }, ctx14 as any)
+  assert(!del2.ok, '快照：删除不存在的 id 报错')
+  assert((await fs14.readFile('/app/index.html')) === '<h1>v1</h1>', '快照：删除不影响工作区文件')
 }
 
 /* ---------------- 15. Token 经济：缓存计量 / 档位 / 增量压缩 ---------------- */
