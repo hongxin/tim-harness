@@ -376,4 +376,44 @@ const FINAL = () => [
   assert(assistantWithCalls.tool_calls!.every((tc) => answered.has(tc.id)), '中止测试：消息序列满足 API 配平约束')
 }
 
+/* ---------------- 7. 模型默认值迁移（deepseek-chat → deepseek-flash） ---------------- */
+
+{
+  const kv = new MapKV()
+  // 模拟用户旧版保存的设置（已填 Key、模型为旧默认）
+  await kv.set('app:settings', {
+    providers: [{ id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: 'sk-old', model: 'deepseek-chat' }],
+    activeProviderId: 'deepseek',
+    proxyTemplate: '',
+    webSearch: null,
+  })
+  const runtime3 = new HarnessRuntime({
+    kv,
+    fs: new TestFS(),
+    transport: new ScriptedTransport([]),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await runtime3.boot()
+  const snap3 = runtime3.getSnapshot()
+  const p = snap3.settings!.providers[0]
+  assert(p.model === 'deepseek-flash', '模型迁移：旧默认 deepseek-chat 升级为 deepseek-flash')
+  assert(p.apiKey === 'sk-old', '模型迁移：不动用户已保存的 API Key')
+  assert(snap3.providerLabel === 'DeepSeek · DeepSeek V4.1 Flash', '模型迁移：顶栏显示名友好化')
+  // 自定义模型名不被动
+  await kv.set('app:settings', {
+    providers: [{ id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: 'sk-x', model: 'my-custom-model' }],
+    activeProviderId: 'deepseek',
+    proxyTemplate: '',
+    webSearch: null,
+  })
+  const runtime4 = new HarnessRuntime({
+    kv,
+    fs: new TestFS(),
+    transport: new ScriptedTransport([]),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await runtime4.boot()
+  assert(runtime4.getSnapshot().settings!.providers[0].model === 'my-custom-model', '模型迁移：用户自定义模型名不受影响')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

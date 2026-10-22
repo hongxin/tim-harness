@@ -54,10 +54,27 @@ export interface RuntimeSnapshot {
 }
 
 export const DEFAULT_PROVIDERS: ProviderSetting[] = [
-  { id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
+  // DeepSeek-V4.1-Flash（1017 版），官方当前建议的默认模型；API model id: deepseek-flash
+  { id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-flash' },
   { id: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' },
   { id: 'ollama', name: 'Ollama 本地', baseURL: 'http://localhost:11434/v1', apiKey: '', model: 'qwen2.5:7b' },
 ]
+
+/** 模型显示名（顶栏芯片用） */
+const MODEL_LABELS: Record<string, string> = {
+  'deepseek-flash': 'DeepSeek V4.1 Flash',
+  'deepseek-chat': 'DeepSeek Chat',
+  'deepseek-reasoner': 'DeepSeek Reasoner',
+}
+
+export function modelLabel(model: string): string {
+  return MODEL_LABELS[model] ?? model
+}
+
+/** 模型默认值迁移：旧缺省 → 新缺省（只动恰好等于旧默认值的，尊重用户自定义） */
+const MODEL_MIGRATIONS: Record<string, Record<string, string>> = {
+  deepseek: { 'deepseek-chat': 'deepseek-flash' },
+}
 
 const K_SETTINGS = 'app:settings'
 const K_SESSION = (id: string) => `session:${id}`
@@ -118,7 +135,7 @@ export class HarnessRuntime {
       ask: this.ask,
       settings: this.settings,
       lastError: this.lastError,
-      providerLabel: provider ? `${provider.name} · ${provider.model}` : null,
+      providerLabel: provider ? `${provider.name} · ${modelLabel(provider.model)}` : null,
       subagentNote: this.subagentNote,
       fsRev: this.fsRev,
       writtenFiles: [...(this.session ? this.writtenBySession.get(this.session.id) ?? [] : [])],
@@ -149,9 +166,26 @@ export class HarnessRuntime {
   async boot(): Promise<void> {
     if (this.booted) return
     const stored = await this.deps.kv.get<AppSettings>(K_SETTINGS)
-    this.settings = stored?.providers?.length
-      ? stored
-      : { providers: DEFAULT_PROVIDERS.map((p) => ({ ...p })), activeProviderId: 'deepseek', proxyTemplate: '', webSearch: null }
+    if (stored?.providers?.length) {
+      // 存量设置迁移：把恰好为旧默认模型名的 provider 升级到新默认（不动 Key 等自定义字段）
+      let migrated = false
+      for (const p of stored.providers) {
+        const table = MODEL_MIGRATIONS[p.id]
+        if (table && table[p.model]) {
+          p.model = table[p.model]
+          migrated = true
+        }
+      }
+      this.settings = stored
+      if (migrated) await this.deps.kv.set(K_SETTINGS, stored)
+    } else {
+      this.settings = {
+        providers: DEFAULT_PROVIDERS.map((p) => ({ ...p })),
+        activeProviderId: 'deepseek',
+        proxyTemplate: '',
+        webSearch: null,
+      }
+    }
     await this.loadSessions()
     if (!this.session) this.createSession()
     this.booted = true

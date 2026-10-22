@@ -125,7 +125,7 @@ export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; 
                 </div>
                 <div className="form-row">
                   <label>模型</label>
-                  <input value={provider.model} placeholder="deepseek-chat" onChange={(e) => update((d) => { d.providers.find((p) => p.id === provider.id)!.model = e.target.value.trim() })} />
+                  <input value={provider.model} placeholder="deepseek-flash" onChange={(e) => update((d) => { d.providers.find((p) => p.id === provider.id)!.model = e.target.value.trim() })} />
                 </div>
                 <div className="form-row">
                   <label>Temperature</label>
