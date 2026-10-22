@@ -1,5 +1,5 @@
-/** 对话主视图：消息流 + 实时草稿 + ask 卡片 + 空态引导 */
-import { useEffect, useRef } from 'react'
+/** 对话主视图：消息流 + 实时草稿 + 自动跟随 + 回到最新 */
+import { useEffect, useRef, useState } from 'react'
 import type { AssistantDraft, ChatMessage } from '../../core/types'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
@@ -58,7 +58,7 @@ function DraftView({ draft }: { draft: AssistantDraft }) {
 
 const EXAMPLES = [
   { title: '📐 斐波那契前 20 项', text: '用 run_js 计算斐波那契数列前 20 项，把结果写入 fib.md，并读回来确认。' },
-  { title: '🗂 建一个小项目', text: '在虚拟工作区创建一个 mini-web 项目：index.html、style.css、app.js 各写一个有趣的小示例，然后 grep 检查所有文件里的函数定义。' },
+  { title: '🎮 做一个小游戏', text: '写一个打砖块 HTML 小游戏到 game.html（单文件，含 CSS/JS），要能键盘操作。写完告诉我怎么预览。' },
   { title: '🔍 数据分析', text: '写一段 JS 生成 100 个正态分布随机数存入 data.json，再用另一段 JS 计算均值和标准差并给出结论。' },
 ]
 
@@ -95,58 +95,97 @@ function EmptyState({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime:
 
 export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
   const scroller = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
+  const [showJump, setShowJump] = useState(false)
+  const sessionId = snapshot.session?.id
+  const messageCount = snapshot.session?.messages.length ?? 0
+  const hasContent = messageCount > 0 || !!snapshot.draft
 
-  const messages = snapshot.session?.messages ?? []
-  const showEmpty = messages.length === 0 && !snapshot.draft
+  // 会话切换：重置跟随状态并跳到底部
+  useEffect(() => {
+    pinned.current = true
+    setShowJump(false)
+    const el = scroller.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [sessionId])
 
+  // 内容增长（含 markdown 重排、工具卡展开、流式增量）→ 若在底部则持续跟随
   useEffect(() => {
     const el = scroller.current
-    if (el && pinned.current) el.scrollTop = el.scrollHeight
-  }, [messages.length, snapshot.draft?.content, snapshot.draft?.reasoning, snapshot.draft?.toolCalls.length, snapshot.rev])
+    const list = listRef.current
+    if (!el || !list) return
+    const follow = () => {
+      if (pinned.current) el.scrollTop = el.scrollHeight
+    }
+    follow()
+    const ro = new ResizeObserver(follow)
+    ro.observe(list)
+    return () => ro.disconnect()
+  }, [sessionId, hasContent])
 
   const onScroll = () => {
     const el = scroller.current
     if (!el) return
-    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    pinned.current = distance < 80
+    setShowJump(distance > 300)
   }
 
+  const jumpToBottom = () => {
+    const el = scroller.current
+    if (!el) return
+    pinned.current = true
+    setShowJump(false)
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }
+
+  const messages = snapshot.session?.messages ?? []
+  const showEmpty = messageCount === 0 && !snapshot.draft
+
   return (
-    <div className="chat-scroll" ref={scroller} onScroll={onScroll}>
-      {showEmpty ? (
-        <EmptyState snapshot={snapshot} runtime={runtime} />
-      ) : (
-        <div className="chat-list">
-          {messages.map((m: ChatMessage, i) => {
-            if (m.role === 'user') {
-              return (
-                <div key={i} className="msg msg-user">
-                  <div className="msg-user-bubble">{m.content}</div>
-                </div>
-              )
-            }
-            if (m.role === 'assistant') {
-              const showBody = m.content && m.content.trim()
-              if (!showBody && !m.tool_calls?.length && !m.reasoningContent) return null
-              return (
-                <div key={i} className="msg msg-assistant">
-                  {m.reasoningContent ? <ReasoningBlock text={m.reasoningContent} /> : null}
-                  {showBody ? <AssistantBody content={m.content!} /> : null}
-                </div>
-              )
-            }
-            if (m.role === 'tool') {
-              return <ToolCallCard key={i} msg={m} />
-            }
-            return null
-          })}
-          {snapshot.draft && !snapshot.draft.done && <DraftView draft={snapshot.draft} />}
-          {snapshot.status === 'running' && !snapshot.draft && (
-            <div className="msg msg-assistant">
-              <span className="cursor" />
-            </div>
-          )}
-        </div>
+    <div className="chat-area">
+      <div className="chat-scroll" ref={scroller} onScroll={onScroll}>
+        {showEmpty ? (
+          <EmptyState snapshot={snapshot} runtime={runtime} />
+        ) : (
+          <div className="chat-list" ref={listRef}>
+            {messages.map((m: ChatMessage, i) => {
+              if (m.role === 'user') {
+                return (
+                  <div key={i} className="msg msg-user">
+                    <div className="msg-user-bubble">{m.content}</div>
+                  </div>
+                )
+              }
+              if (m.role === 'assistant') {
+                const showBody = m.content && m.content.trim()
+                if (!showBody && !m.tool_calls?.length && !m.reasoningContent) return null
+                return (
+                  <div key={i} className="msg msg-assistant">
+                    {m.reasoningContent ? <ReasoningBlock text={m.reasoningContent} /> : null}
+                    {showBody ? <AssistantBody content={m.content!} /> : null}
+                  </div>
+                )
+              }
+              if (m.role === 'tool') {
+                return <ToolCallCard key={i} msg={m} />
+              }
+              return null
+            })}
+            {snapshot.draft && !snapshot.draft.done && <DraftView draft={snapshot.draft} />}
+            {snapshot.status === 'running' && !snapshot.draft && (
+              <div className="msg msg-assistant">
+                <span className="cursor" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {showJump && (
+        <button type="button" className="jump-latest" onClick={jumpToBottom} title="回到最新消息">
+          <span className="jump-arrow">↓</span> 最新消息
+        </button>
       )}
     </div>
   )

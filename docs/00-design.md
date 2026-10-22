@@ -136,9 +136,28 @@ edit 唯一匹配、超时上限、失败换策略）；错误信息必须包含
 | 验证 | 方式 | 结果 |
 |---|---|---|
 | 类型 | `tsc --noEmit` 全仓 strict | ✅ |
-| core 可移植性 | Node + mock 适配器跑通完整 loop | ✅ 22 断言 |
-| 生产构建 | `vite build` | ✅ gzip ≈ 70KB |
+| core 可移植性 | Node + mock 适配器跑通完整 loop | ✅ 30 断言（含会话配平/中止路径） |
+| 生产构建 | `vite build` | ✅ gzip ≈ 73KB |
 | 浏览器启动 | Playwright 真实浏览器 | ✅ 无页面错误 |
 | Worker 沙箱 | 真实浏览器：正常/超时/async | ✅ |
 | OPFS / IndexedDB | 真实浏览器读写删 | ✅ |
-| 真实 LLM 端到端 | 需用户填入 API Key 后人工验证 | ⏳ 见 README |
+| 滚动约束链 | 视口锁定 + 自动跟随 + 回到最新 | ✅ e2e |
+| HTML 预览 | 沙箱 iframe + console/error 回传 + 大窗 | ✅ e2e |
+| 真实 LLM 端到端 | 用户填入 API Key 人工验证 | ✅（DeepSeek 实测可用） |
+
+## 九、v0.1.1 GUI 深度改良记录（真实使用反馈驱动）
+
+1. **滚动约束链修复（根因）**：`.app` grid 隐式行随内容长高、被 `overflow:hidden` 裁剪，
+   对话区从未触发内部滚动 → `grid-template-rows: minmax(0,1fr)` + `min-height:0` 锁定视口，
+   滚动约束正确传导；配套 ResizeObserver 自动跟随 + 可见滚动条 + 「回到最新」悬浮按钮。
+2. **HTML 实时预览**（右面板新 tab）：opaque-origin 沙箱 iframe（`sandbox="allow-scripts"`
+   系，无 `allow-same-origin`），注入 console/error 钩子 postMessage 回传，智能体写入自动
+   刷新，支持大窗分栏（预览 + 控制台）。这是 JetBot 亮点的升级版。
+3. **会话完整性（日志配平）**：中止/刷新导致的悬空 tool_calls 由 `repair.ts` 幂等补齐
+   合成结果 —— loop 中止路径 + 启动加载历史会话两处触发，彻底杜绝 "下次发送 400"。
+4. **中止传播修复**：`executeTool` 竞速加入 abort 分支，任何挂起中的工具（如 ask_user）
+   都能被「停止」立即打断；挂起的 ask 卡片同步清理。
+5. **性能**：文件列表刷新信号从"每次 UI 通知"改为 `fsRev`（仅真实文件写入递增），
+   消除流式期间每帧 OPFS listAll。
+6. **文件树**：目录分组可折叠；本会话智能体新写文件 `new` 高亮 + 预览 tab 琥珀点提示。
+7. 细节：ask 卡片对齐到输入区宽度；运行中可预输入下一条消息；主题按钮语义化。

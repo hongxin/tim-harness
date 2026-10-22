@@ -298,4 +298,82 @@ const FINAL = () => [
   assert((session.usage.total_tokens ?? 0) >= 15, '端到端：usage 聚合')
 }
 
+/* ---------------- 5. 会话完整性修复（日志配平） ---------------- */
+
+{
+  const { repairSessionIntegrity } = await import('../src/core/session/repair')
+  const dangling = {
+    id: 's_x',
+    title: 't',
+    createdAt: 0,
+    updatedAt: 0,
+    todos: [],
+    usage: {},
+    messages: [
+      { role: 'user', content: 'hi' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'c1', name: 'read_file', arguments: '{"path":"a"}' },
+          { id: 'c2', name: 'run_js', arguments: '{"code":"1"}' },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'c1', name: 'read_file', content: 'ok' },
+      // c2 缺失 —— 模拟中断
+      { role: 'assistant', content: 'done' },
+    ],
+  } as any
+  const fixed = repairSessionIntegrity(dangling)
+  assert(fixed === 1, '日志配平：识别并补齐 1 个悬空 tool_call')
+  const c2msg = dangling.messages.find((m: any) => m.tool_call_id === 'c2')
+  assert(!!c2msg && c2msg.content.includes('中断'), '日志配平：合成结果含幂等性指引')
+  const idxTool = dangling.messages.indexOf(c2msg)
+  const idxDone = dangling.messages.findIndex((m: any) => m.content === 'done')
+  assert(idxTool > 0 && idxTool < idxDone, '日志配平：合成结果插入位置正确（紧跟连续 tool 块）')
+  const again = repairSessionIntegrity(dangling)
+  assert(again === 0, '日志配平：幂等，二次修复无操作')
+}
+
+/* ---------------- 6. 中止路径：ask_user 挂起 → 停止 → 配平 ---------------- */
+
+{
+  const kv = new MapKV()
+  const fs = new TestFS()
+  const scripts: string[][] = [
+    [
+      toolCallChunk('call_ask', 'ask_user', '{"question":"继续吗？"}', true),
+      sse({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }),
+    ],
+  ]
+  const runtime2 = new HarnessRuntime({
+    kv,
+    fs,
+    transport: new ScriptedTransport(scripts),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+    now: () => new Date('2026-10-22T08:00:00Z'),
+  })
+  await runtime2.boot()
+  await runtime2.saveSettings({
+    providers: [{ id: 'mock', name: 'Mock', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'mock-1' }],
+    activeProviderId: 'mock',
+    proxyTemplate: '',
+    webSearch: null,
+  })
+  const running = runtime2.send('请先问我')
+  await new Promise((r) => setTimeout(r, 150)) // 等 ask_user 挂起
+  assert(runtime2.getSnapshot().ask !== null, '中止测试：ask_user 已挂起等待用户')
+  runtime2.stop()
+  await running
+  const s2 = runtime2.getSnapshot()
+  assert(s2.status === 'idle' && s2.ask === null, '中止测试：停止后状态复位、ask 清空')
+  const msgs = s2.session!.messages
+  const repairedMsg = [...msgs].reverse().find((m) => m.role === 'tool' && m.content?.includes('中断'))
+  assert(!!repairedMsg && repairedMsg.tool_call_id === 'call_ask', '中止测试：悬空 ask_user 调用已配平（可继续会话）')
+  // 下一次发送的请求体合法性：序列里每个 tool_call 都有结果
+  const assistantWithCalls = msgs.filter((m) => m.role === 'assistant' && m.tool_calls?.length)[0]
+  const answered = new Set(msgs.filter((m) => m.role === 'tool').map((m) => m.tool_call_id))
+  assert(assistantWithCalls.tool_calls!.every((tc) => answered.has(tc.id)), '中止测试：消息序列满足 API 配平约束')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

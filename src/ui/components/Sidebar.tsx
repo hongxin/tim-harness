@@ -63,8 +63,8 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <button type="button" className="btn-ghost btn-footer" onClick={onToggleTheme} title="切换主题">
-          {theme === 'dark' ? '☀ 浅色' : '☾ 深色'}
+        <button type="button" className="btn-ghost btn-footer" onClick={onToggleTheme} title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}>
+          {theme === 'dark' ? '☀' : '☾'}
         </button>
         <button type="button" className="btn-ghost btn-footer" onClick={onOpenSettings}>
           ⚙ 设置

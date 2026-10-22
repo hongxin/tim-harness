@@ -23,8 +23,9 @@ import { LLMClient } from './llm/client'
 import { AgentRunner } from './agent/loop'
 import { buildSystemPrompt } from './agent/prompts'
 import { deriveTitle, newSession } from './session/session'
+import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
-import { genId } from './util/path'
+import { genId, normalizePath } from './util/path'
 
 export type RuntimeStatus = 'idle' | 'running'
 
@@ -46,6 +47,10 @@ export interface RuntimeSnapshot {
   lastError: string | null
   providerLabel: string | null
   subagentNote: string | null
+  /** 文件系统变更信号：仅在真实发生写操作时递增（避免流式期间高频 listAll） */
+  fsRev: number
+  /** 当前会话中智能体写入/修改过的文件（UI 高亮"执行效果"用） */
+  writtenFiles: string[]
 }
 
 export const DEFAULT_PROVIDERS: ProviderSetting[] = [
@@ -80,6 +85,8 @@ export class HarnessRuntime {
   private abortController: AbortController | null = null
   /** 每会话的"已读文件"观测门状态 */
   private readFilesBySession = new Map<string, Set<string>>()
+  private fsRev = 0
+  private writtenBySession = new Map<string, Set<string>>()
 
   private listeners = new Set<() => void>()
   private snapshot: RuntimeSnapshot
@@ -113,6 +120,8 @@ export class HarnessRuntime {
       lastError: this.lastError,
       providerLabel: provider ? `${provider.name} · ${provider.model}` : null,
       subagentNote: this.subagentNote,
+      fsRev: this.fsRev,
+      writtenFiles: [...(this.session ? this.writtenBySession.get(this.session.id) ?? [] : [])],
     }
   }
 
@@ -152,10 +161,19 @@ export class HarnessRuntime {
   private async loadSessions(): Promise<void> {
     const keys = await this.deps.kv.keys('session:')
     const sessions: SessionModel[] = []
+    let repaired = false
     for (const k of keys) {
       const s = await this.deps.kv.get<SessionModel>(k)
-      if (s && s.id && Array.isArray(s.messages)) sessions.push(s)
+      if (s && s.id && Array.isArray(s.messages)) {
+        // 启动时修复历史会话中的悬空 tool_calls（页面刷新/崩溃留下的不合法序列）
+        if (repairSessionIntegrity(s) > 0) {
+          repaired = true
+          await this.deps.kv.set(k, s)
+        }
+        sessions.push(s)
+      }
     }
+    if (repaired) console.info('[tim-harness] 已自动修复历史会话中的中断工具调用记录')
     sessions.sort((a, b) => b.updatedAt - a.updatedAt)
     this.sessions = sessions.slice(0, 100).map((s) => ({ id: s.id, title: s.title, updatedAt: s.updatedAt }))
     this.session = sessions[0] ?? null
@@ -288,6 +306,13 @@ export class HarnessRuntime {
     this.status = 'idle'
     this.abortController = null
     this.draft = null
+    // 中止时若仍有挂起的 ask_user，释放并清理（其工具结果已由日志配平补齐）
+    if (!result.ok && this.ask) {
+      const resolve = this.askResolve
+      this.ask = null
+      this.askResolve = null
+      resolve?.('')
+    }
     if (!result.ok && result.error && !result.aborted) {
       this.lastError = result.error
     }
@@ -434,7 +459,29 @@ export class HarnessRuntime {
   }
 
   private onAgentEvent(e: AgentEvent): void {
-    if (e.type === 'tool_end' || e.type === 'llm_end') {
+    if (e.type === 'tool_end') {
+      // 文件写入类工具 → 递增 fsRev（驱动文件面板精准刷新）并记录"新写文件"
+      if ((e.call.name === 'write_file' || e.call.name === 'edit_file') && e.result.ok) {
+        try {
+          const path = normalizePath(JSON.parse(e.call.arguments || '{}').path ?? '')
+          if (path && path !== '/' && this.session) {
+            let set = this.writtenBySession.get(this.session.id)
+            if (!set) {
+              set = new Set()
+              this.writtenBySession.set(this.session.id, set)
+            }
+            set.add(path)
+            this.fsRev++
+          }
+        } catch {
+          /* args 解析失败忽略 */
+        }
+      }
+      void this.persistSession()
+      this.scheduleNotify()
+      return
+    }
+    if (e.type === 'llm_end') {
       void this.persistSession()
       this.scheduleNotify()
     }
@@ -488,6 +535,7 @@ export class HarnessRuntime {
       await this.deps.fs.writeFile(f.path, f.content)
       n++
     }
+    this.fsRev++
     this.notify()
     return n
   }

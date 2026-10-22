@@ -56,8 +56,7 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
       <main className="mainpane">
         <TopBar snapshot={snapshot} runtime={runtime} rightOpen={rightOpen} onToggleRight={() => setRightOpen((v) => !v)} />
         <ChatView snapshot={snapshot} runtime={runtime} />
-        <AskUserCard snapshot={snapshot} runtime={runtime} />
-        <Composer snapshot={snapshot} runtime={runtime} />
+        <Composer snapshot={snapshot} runtime={runtime} askSlot={<AskUserCard snapshot={snapshot} runtime={runtime} />} />
       </main>
       {rightOpen && <RightPanel snapshot={snapshot} runtime={runtime} fsMode={fsMode} onClose={() => setRightOpen(false)} />}
       {settingsOpen && <SettingsDialog runtime={runtime} onClose={() => setSettingsOpen(false)} />}

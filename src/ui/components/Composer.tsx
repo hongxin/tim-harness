@@ -1,9 +1,18 @@
-/** 输入区：自动增高、Enter 发送、运行中变为停止 */
+/** 输入区：自动增高、Enter 发送、运行中变为停止（仍可预输入下一条） */
 import { useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
 
-export function Composer({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+export function Composer({
+  snapshot,
+  runtime,
+  askSlot,
+}: {
+  snapshot: RuntimeSnapshot
+  runtime: HarnessRuntime
+  askSlot?: ReactNode
+}) {
   const [text, setText] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
   const running = snapshot.status === 'running'
@@ -27,6 +36,7 @@ export function Composer({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
 
   return (
     <div className="composer-wrap">
+      {askSlot}
       {snapshot.lastError && (
         <div className="error-banner" role="alert">
           <span className="error-icon">!</span>
@@ -42,7 +52,7 @@ export function Composer({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
           ref={taRef}
           value={text}
           rows={1}
-          placeholder={running ? '运行中… 可点击停止' : '给 Tim 下达任务（Enter 发送 · Shift+Enter 换行）'}
+          placeholder={running ? '智能体运行中… 可先输入下一条任务（发送待其结束后回车）' : '给 Tim 下达任务（Enter 发送 · Shift+Enter 换行）'}
           onChange={(e) => {
             setText(e.target.value)
             autosize()
@@ -53,7 +63,6 @@ export function Composer({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
               submit()
             }
           }}
-          disabled={running}
         />
         {running ? (
           <button type="button" className="btn-stop" onClick={() => runtime.stop()} title="停止">

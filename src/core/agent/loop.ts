@@ -21,6 +21,7 @@ import type {
 import type { ToolContext } from '../ports'
 import type { LLMClient } from '../llm/client'
 import type { ToolRegistry } from '../tools/registry'
+import { repairTrailingToolCalls } from '../session/repair'
 
 export const DEFAULT_MAX_ITERATIONS = 24
 export const DEFAULT_TOOL_TIMEOUT_MS = 120_000
@@ -70,6 +71,9 @@ export class AgentRunner {
       }
     } finally {
       this.deps.onDraft?.(null)
+      // 日志配平（DSH 思想）：中断/异常时为悬空 tool_calls 补合成结果，
+      // 保证会话消息序列始终合法、可继续。
+      repairTrailingToolCalls(session)
     }
     session.usage = usage
     session.updatedAt = Date.now()
@@ -246,16 +250,24 @@ export class AgentRunner {
       }
     }
     const timeoutMs = tool.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS
+    // 三个出口：正常完成 / 超时 / 用户中止（中止必须能打断任何挂起的工具，如 ask_user）
+    const timeoutP = new Promise<ToolResult>((_, reject) => {
+      const t = setTimeout(
+        () => reject(new Error(`工具 ${call.name} 执行超时（${timeoutMs}ms）`)),
+        timeoutMs,
+      )
+      // Node 环境下不阻止进程退出（长超时工具如 ask_user 会挂住事件循环）
+      ;(t as unknown as { unref?: () => void }).unref?.()
+    })
+    timeoutP.catch(() => {})
+    const abortP = new Promise<ToolResult>((_, reject) => {
+      const onAbort = () => reject(new DOMException('aborted', 'AbortError'))
+      if (ctx.signal.aborted) onAbort()
+      else ctx.signal.addEventListener('abort', onAbort, { once: true })
+    })
+    abortP.catch(() => {})
     try {
-      return await Promise.race([
-        tool.execute(args ?? {}, ctx),
-        new Promise<ToolResult>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`工具 ${call.name} 执行超时（${timeoutMs}ms）`)),
-            timeoutMs,
-          ),
-        ),
-      ])
+      return await Promise.race([tool.execute(args ?? {}, ctx), timeoutP, abortP])
     } catch (err) {
       if (ctx.signal.aborted) throw new DOMException('aborted', 'AbortError')
       return { ok: false, output: `Error: ${err instanceof Error ? err.message : String(err)}` }

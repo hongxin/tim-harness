@@ -17,7 +17,11 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     bootBrowserHarness()
       .then(({ runtime, fsMode }) => {
-        if (!cancelled) setHost({ runtime, fsMode })
+        if (!cancelled) {
+          setHost({ runtime, fsMode })
+          // 调试/自动化测试入口（开发与 e2e 使用）
+          ;(window as unknown as Record<string, unknown>).__TIM_RUNTIME__ = runtime
+        }
       })
       .catch((err) => {
         console.error('boot failed', err)
