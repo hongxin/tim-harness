@@ -22,11 +22,11 @@ import type {
 import { LLMClient } from './llm/client'
 import { AgentRunner } from './agent/loop'
 import { buildSystemPrompt } from './agent/prompts'
-import { deriveTitle, newSession } from './session/session'
+import { deriveTitle, effectiveMessages, newSession } from './session/session'
 import { repairSessionIntegrity } from './session/repair'
 import { createMainRegistry, createSubagentRegistry } from './tools'
 import { scanSkills, type SkillMeta } from './tools/skills'
-import { buildContextView } from './agent/context'
+import { buildContextView, CONTEXT_BUDGET_CHARS } from './agent/context'
 import { genId, normalizePath } from './util/path'
 
 export type RuntimeStatus = 'idle' | 'running'
@@ -61,6 +61,8 @@ export interface RuntimeSnapshot {
   approval: PendingApproval | null
   /** 上下文水位（估算字符量 / 预算 / 是否已折叠） */
   contextInfo: ContextInfo | null
+  /** 正在执行上下文压缩（LLM 摘要） */
+  compacting: boolean
   settings: AppSettings | null
   lastError: string | null
   providerLabel: string | null
@@ -129,6 +131,7 @@ export class HarnessRuntime {
   private fsRev = 0
   private writtenBySession = new Map<string, Set<string>>()
   private skills: SkillMeta[] = []
+  private compactingFlag = false
 
   private listeners = new Set<() => void>()
   private snapshot: RuntimeSnapshot
@@ -152,7 +155,7 @@ export class HarnessRuntime {
     const provider = this.activeProvider()
     let contextInfo: ContextInfo | null = null
     if (this.session) {
-      const info = buildContextView(this.session.messages).info
+      const info = buildContextView(effectiveMessages(this.session)).info
       contextInfo = { estChars: info.estChars, budgetChars: info.budgetChars, masked: info.masked }
     }
     return {
@@ -165,6 +168,7 @@ export class HarnessRuntime {
       ask: this.ask,
       approval: this.approval,
       contextInfo,
+      compacting: this.compactingFlag,
       settings: this.settings,
       lastError: this.lastError,
       providerLabel: provider ? `${provider.name} · ${modelLabel(provider.model)}` : null,
@@ -210,6 +214,7 @@ export class HarnessRuntime {
         }
       }
       if (!stored.toolApproval) stored.toolApproval = 'off'
+      if (!stored.autoCompact) stored.autoCompact = 'on'
       this.settings = stored
       if (migrated) await this.deps.kv.set(K_SETTINGS, stored)
     } else {
@@ -219,6 +224,7 @@ export class HarnessRuntime {
         proxyTemplate: '',
         webSearch: null,
         toolApproval: 'off',
+        autoCompact: 'on',
       }
     }
     await this.loadSessions()
@@ -411,6 +417,94 @@ export class HarnessRuntime {
     }
     await this.persistSession()
     this.notify()
+    // 水位超 80% → 自动压缩（LLM 摘要折叠早期消息，此后 token 按尾部计费）
+    const eff = buildContextView(effectiveMessages(this.session)).info.estChars
+    if (this.settings?.autoCompact !== 'off' && eff > CONTEXT_BUDGET_CHARS * 0.8) {
+      void this.compactSession(true)
+    }
+  }
+
+  /**
+   * 上下文压缩（DSH surface 思想）：用一次 LLM 调用把 [0, 最后一条 user) 的
+   * 消息总结为摘要；日志不动，后续每轮只发"摘要 + 尾部"。
+   */
+  async compactSession(auto = false): Promise<boolean> {
+    if (this.status === 'running' || this.compactingFlag || !this.session) return false
+    const provider = this.activeProvider()
+    if (!provider?.baseURL) return false
+    if (!provider.apiKey && !/localhost|127\.0\.0\.1/.test(provider.baseURL)) {
+      if (!auto) {
+        this.lastError = '压缩需要可用的模型服务（当前 Provider 缺 Key）。'
+        this.notify()
+      }
+      return false
+    }
+    const s = this.session
+    // 折叠边界：最后一条 user 消息之前（保证当前任务上下文完整）
+    let lastUser = -1
+    for (let i = s.messages.length - 1; i >= 0; i--) {
+      if (s.messages[i].role === 'user') {
+        lastUser = i
+        break
+      }
+    }
+    if (lastUser < 6) {
+      if (!auto) {
+        this.lastError = '会话内容还太少，暂不值得压缩（至少需要 6 条早期消息）。'
+        this.notify()
+      }
+      return false
+    }
+    // 已压缩且新增不足 → 跳过自动
+    if (auto && s.compacted && lastUser - s.compacted.foldedCount < 6) return false
+
+    this.compactingFlag = true
+    this.notify()
+    try {
+      const client = new LLMClient(this.deps.transport, {
+        name: provider.name,
+        baseURL: provider.baseURL,
+        apiKey: provider.apiKey || undefined,
+        model: provider.model,
+        temperature: 0,
+      })
+      // 摘要调用本身也可能超预算 → 用折叠视图发送
+      const head = s.messages.slice(0, lastUser)
+      const headView = buildContextView(head, CONTEXT_BUDGET_CHARS * 0.7).messages
+      let summary = ''
+      for await (const chunk of client.streamChat({
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You compress conversation history for an AI coding agent that will continue this work in a browser harness. ' +
+              'Write a dense, factual summary (markdown, ≤500 words) with sections: ' +
+              '1) Original task & constraints  2) Key decisions & findings  3) Current workspace state (file paths + purpose, todos)  ' +
+              '4) Open threads & next steps. Preserve exact file paths, names and numbers. ' +
+              'Write in the conversation language. Output ONLY the summary.',
+          },
+          ...headView,
+        ],
+      })) {
+        if (chunk.content) summary += chunk.content
+      }
+      summary = summary.trim()
+      if (!summary) return false
+      s.compacted = { summary, foldedCount: lastUser, createdAt: Date.now(), model: provider.model }
+      await this.persistSession()
+      this.notify()
+      return true
+    } catch (err) {
+      console.warn('[tim-harness] compact 失败', err)
+      if (!auto) {
+        this.lastError = `压缩失败：${err instanceof Error ? err.message : err}`
+        this.notify()
+      }
+      return false
+    } finally {
+      this.compactingFlag = false
+      this.notify()
+    }
   }
 
   stop(): void {

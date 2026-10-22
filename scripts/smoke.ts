@@ -82,11 +82,13 @@ class TestFS implements VFileSystem {
   }
 }
 
-/** 按请求序号回放 SSE 应答 */
+/** 按请求序号回放 SSE 应答，并记录请求体（供压缩链路断言） */
 class ScriptedTransport implements Transport {
+  requests: string[] = []
   constructor(private scripts: string[][]) {}
   private i = 0
-  async request(): Promise<TransportResponse> {
+  async request(_url: string, init: { body?: string } = {}): Promise<TransportResponse> {
+    if (init.body) this.requests.push(init.body)
     const events = this.scripts[this.i++] ?? this.scripts[this.scripts.length - 1]
     const body = events.join('') + 'data: [DONE]\n\n'
     // 每次只给 5 字节，模拟真实网络分片，同时考验 SSE 解析器
@@ -571,6 +573,81 @@ const FINAL = () => [
   })
   await runtime6.boot()
   assert(runtime6.getSnapshot().skills.length === 3, 'runtime：技能索引进入快照')
+}
+
+/* ---------------- 11. 上下文压缩（compaction 全链路） ---------------- */
+
+{
+  const { effectiveMessages } = await import('../src/core/session/session')
+  const kv = new MapKV()
+  const fs = new TestFS()
+  const SUMMARY = () => [
+    sse({ choices: [{ index: 0, delta: { role: 'assistant', content: '## 任务\n搭建演示\n' } }] }),
+    sse({ choices: [{ index: 0, delta: { content: '## 现状\n已完成 A/B' }, finish_reason: 'stop' }] }),
+  ]
+  const transport7 = new ScriptedTransport([
+    SUMMARY(),                       // 压缩摘要调用
+    [                                // 压缩后的正常对话：一次最终回答
+      sse({ choices: [{ index: 0, delta: { content: 'ok-after-compact' }, finish_reason: 'stop' }] }),
+    ],
+  ])
+  const runtime7 = new HarnessRuntime({
+    kv,
+    fs,
+    transport: transport7,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await runtime7.boot()
+  await runtime7.saveSettings({
+    providers: [{ id: 'mock', name: 'Mock', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'mock-1' }],
+    activeProviderId: 'mock',
+    proxyTemplate: '',
+    webSearch: null,
+  })
+  // 注入长历史（10 轮对话，最后一轮 user 在末尾）
+  await page_simulateLongHistory(runtime7)
+  ;(runtime7 as any).notify() // 直接改 session 后手动刷新快照（正常路径由事件驱动）
+  const before = runtime7.getSnapshot().contextInfo!.estChars
+  const okCompact = await runtime7.compactSession(false)
+  assert(okCompact, '压缩：手动压缩成功')
+  const s7 = runtime7.getSnapshot()
+  const c = s7.session!.compacted!
+  assert(!!c && c.summary.includes('已完成 A/B'), '压缩：LLM 摘要已生成并保存')
+  assert(c.foldedCount === 20, `压缩：折叠边界=最后一条 user 之前（folded=${c.foldedCount}）`)
+  const after = s7.contextInfo!.estChars
+  assert(after < before * 0.5, `压缩：有效上下文显著下降（${before} → ${after}）`)
+  // 后续对话只发"摘要+尾部"
+  await runtime7.send('继续')
+  const lastBody = JSON.parse(transport7.requests[transport7.requests.length - 1])
+  const msgs = lastBody.messages
+  assert(
+    msgs[1].role === 'user' && msgs[1].content.startsWith('[Conversation compacted'),
+    '压缩：请求以摘要标记消息开头',
+  )
+  assert(msgs.length === 4, `压缩：请求只含 system+摘要+尾部消息（实际 ${msgs.length}）`)
+  assert(!lastBody.messages.some((m: any) => (m.content ?? '').includes('round-09-早期内容')), '压缩：对话请求不含被折叠内容')
+  // 日志完整性
+  assert(s7.session!.messages.length === 23, '压缩：会话日志完整保留（23 条）')
+  assert(effectiveMessages(s7.session!).length === 4, '压缩：有效视图=摘要+3 条尾部')
+
+  async function page_simulateLongHistory(rt: any) {
+    const s = rt.getSnapshot().session
+    for (let k = 0; k < 10; k++) {
+      s.messages.push({ role: 'user', content: `round-${k}-任务描述`.padEnd(400, `round-${String(k).padStart(2, '0')}-早期内容`) })
+      s.messages.push({ role: 'assistant', content: `round-${k} 回答 `.padEnd(400, 'x') })
+    }
+    s.messages.push({ role: 'user', content: '最后一问' })
+  }
+}
+
+/* ---------------- 12. LaTeX Unicode 兜底渲染 ---------------- */
+
+{
+  const { prettifyTex } = await import('../src/ui/math')
+  assert(prettifyTex('E=mc^2').includes('²'), '公式：上标 ²')
+  assert(prettifyTex('\\alpha + \\beta_1').includes('α') && prettifyTex('\\alpha + \\beta_1').includes('₁'), '公式：希腊字母与下标')
+  assert(prettifyTex('\\frac{a}{b} + \\sqrt{x} \\leq \\sum_i \\times \\infty').includes('√'), '公式：sqrt/sum/leq/times/infty')
+  assert(prettifyTex('\\frac{ab}{cd}') === '(ab)/(cd)', '公式：多字符分数加括号（' + prettifyTex('\\frac{ab}{cd}') + '）')
 }
 
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

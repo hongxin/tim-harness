@@ -185,6 +185,25 @@ export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; 
         {tab === 'data' && (
           <div className="settings-body">
             <div className="form-block">
+              <div className="form-block-title">上下文压缩</div>
+              <p className="form-desc">
+                水位超 80% 时自动压缩：用一次 LLM 调用把早期消息总结为摘要，之后每轮只发"摘要 + 近期尾部"，
+                token 消耗从全量降为尾部。会话完整记录不受影响。也可随时用顶栏 ⚡ 手动压缩。
+              </p>
+              <div className="seg">
+                {(['on', 'off'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`seg-btn ${(draft.autoCompact ?? 'on') === v ? 'on' : ''}`}
+                    onClick={() => update((d) => { d.autoCompact = v })}
+                  >
+                    {v === 'on' ? '自动压缩（默认）' : '仅手动'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-block">
               <div className="form-block-title">工具审批</div>
               <p className="form-desc">
                 开启后，智能体的写操作（write_file / edit_file）执行前会弹出审批卡片，经你允许才落盘；

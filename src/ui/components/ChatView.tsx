@@ -4,6 +4,7 @@ import type { AssistantDraft, ChatMessage } from '../../core/types'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
 import { renderMarkdown } from '../markdown'
+import { enhanceMath } from '../math'
 import { ToolCallCard } from './ToolCallCard'
 import { GitHubMark, REPO_STAR_URL, REPO_URL } from './GitHubMark'
 
@@ -24,8 +25,13 @@ function onMarkdownClick(e: React.MouseEvent) {
 }
 
 function AssistantBody({ content }: { content: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  // 检测到公式时懒加载 KaTeX 精确渲染（失败保持 Unicode 兜底）
+  useEffect(() => {
+    if (ref.current?.querySelector('[data-tex]')) void enhanceMath(ref.current)
+  }, [content])
   return (
-    <div className="md-body" onClick={onMarkdownClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+    <div ref={ref} className="md-body" onClick={onMarkdownClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
   )
 }
 
@@ -54,6 +60,25 @@ function DraftView({ draft }: { draft: AssistantDraft }) {
       )}
       {!draft.done && <span className="cursor" />}
     </div>
+  )
+}
+
+/** 压缩分界卡：早期消息 → 摘要（日志完整保留，仅模型视图收敛） */
+function CompactionDivider({ snapshot }: { snapshot: RuntimeSnapshot }) {
+  const c = snapshot.session?.compacted
+  if (!c) return null
+  const savedPct = snapshot.session!.messages.length
+    ? Math.round((c.foldedCount / snapshot.session!.messages.length) * 100)
+    : 0
+  return (
+    <details className="compact-divider">
+      <summary>
+        <span className="cd-badge">⚡ 已压缩</span>
+        前 {c.foldedCount} 条消息（约 {savedPct}%）已折叠为摘要 —— 后续对话按尾部计费，完整记录仍在本会话中
+        <span className="cd-time">{new Date(c.createdAt).toLocaleString('zh-CN', { hour12: false })}</span>
+      </summary>
+      <div className="cd-summary md-body" onClick={onMarkdownClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(c.summary) }} />
+    </details>
   )
 }
 
@@ -160,6 +185,7 @@ export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
           <EmptyState snapshot={snapshot} runtime={runtime} />
         ) : (
           <div className="chat-list" ref={listRef}>
+            {snapshot.session?.compacted && <CompactionDivider snapshot={snapshot} />}
             {messages.map((m: ChatMessage, i) => {
               if (m.role === 'user') {
                 return (

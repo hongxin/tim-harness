@@ -110,6 +110,8 @@ export interface AppSettings {
   webSearch: WebSearchSetting | null
   /** 工具审批缝：'on' 时写类工具（write_file/edit_file）需用户批准（JetBot Permission 桥思想） */
   toolApproval?: 'off' | 'on'
+  /** 上下文水位超 80% 时自动压缩（LLM 摘要折叠早期消息，省 token） */
+  autoCompact?: 'on' | 'off'
 }
 
 /* ---------------- 会话 ---------------- */
@@ -125,6 +127,16 @@ export interface SessionModel {
   model?: string
   /** 累计 token 用量（近似，来自流式 usage） */
   usage: Usage
+  /**
+   * 上下文压缩（DSH surface 思想）：日志不删，foldedCount 之前的消息
+   * 被折叠为 summary，仅发给模型"摘要+尾部"，token 按尾部计费。
+   */
+  compacted?: {
+    summary: string
+    foldedCount: number
+    createdAt: number
+    model?: string
+  }
 }
 
 /* ---------------- 事件 ---------------- */

@@ -277,6 +277,47 @@ const skillChips = await page.locator('.skill-chip').count()
 if (skillChips < 1) throw new Error('技能索引未在 UI 显示')
 console.log('✓ 技能系统：/skills/SKILL.md 自动入索引并展示')
 
+// 11.5 LaTeX 公式渲染（Unicode 兜底 + KaTeX 增强）
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  rt.getSnapshot().session.messages.push({
+    role: 'assistant',
+    content: '质能方程 $E=mc^2$ 表明：\n\n$$\\frac{a}{b} + \\sum_{i=1}^{n} x_i \\leq \\int_0^\\infty f(t)\\,dt$$\n\n希腊 $\\alpha+\\beta_1$ 与行内 $a < b$。',
+  })
+  rt.notify()
+})
+await page.waitForTimeout(600)
+const mathInline = await page.locator('.md-body .math-inline').count()
+const mathBlock = await page.locator('.md-body .math-block').count()
+if (mathInline < 3 || mathBlock < 1) throw new Error(`公式渲染异常（行内 ${mathInline} / 块级 ${mathBlock}）`)
+const firstMath = await page.evaluate(() => {
+  const el = document.querySelector('.math-inline')
+  return { text: el?.textContent ?? '', hasKatex: !!el?.querySelector('.katex') }
+})
+if (!firstMath.text.includes('²') && !firstMath.hasKatex) {
+  throw new Error('公式渲染兜底与增强均缺失: ' + JSON.stringify(firstMath))
+}
+const katexCount = await page.locator('.katex').count()
+console.log(
+  `✓ LaTeX 公式：行内 ${mathInline} 处 + 块级 ${mathBlock} 处（${katexCount > 0 ? `KaTeX 已精确渲染 ${katexCount} 处` : 'Unicode 兜底渲染'}）`,
+)
+
+// 11.6 压缩分界卡
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  const s = rt.getSnapshot().session
+  s.compacted = { summary: '## 演示摘要\n这是压缩后的摘要内容。', foldedCount: 12, createdAt: Date.now() }
+  rt.notify()
+})
+await page.waitForTimeout(300)
+if (!(await page.isVisible('.compact-divider'))) throw new Error('压缩分界卡未显示')
+const cdText = await page.textContent('.compact-divider')
+if (!cdText.includes('已压缩') || !cdText.includes('12')) throw new Error('压缩分界卡内容异常: ' + cdText.slice(0, 60))
+await page.click('.compact-divider summary')
+await page.waitForTimeout(200)
+if (!(await page.isVisible('.cd-summary'))) throw new Error('压缩摘要不可展开')
+console.log('✓ 上下文压缩：分界卡 + 摘要展开正常')
+
 // 12. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')

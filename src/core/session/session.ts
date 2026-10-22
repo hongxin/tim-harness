@@ -1,4 +1,4 @@
-import type { SessionModel, Usage } from '../types'
+import type { ChatMessage, SessionModel, Usage } from '../types'
 import { genId } from '../util/path'
 
 export function newSession(): SessionModel {
@@ -12,6 +12,24 @@ export function newSession(): SessionModel {
     todos: [],
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
   }
+}
+
+/**
+ * 压缩后的"有效消息视图"：摘要标记 + 尾部消息（日志本身不动）。
+ * loop 发给 LLM 与上下文水位估算都用这个视图。
+ */
+export function effectiveMessages(s: SessionModel): ChatMessage[] {
+  const c = s.compacted
+  if (!c || c.foldedCount <= 0 || c.foldedCount >= s.messages.length) return s.messages
+  return [
+    {
+      role: 'user',
+      content:
+        `[Conversation compacted: the ${c.foldedCount} earliest messages were folded into the summary below to save context. ` +
+        `The full transcript remains in the session record and on disk.]\n\n${c.summary}`,
+    },
+    ...s.messages.slice(c.foldedCount),
+  ]
 }
 
 /** 首条用户消息 → 会话标题（本地启发式，不耗 LLM 调用） */

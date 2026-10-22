@@ -2,9 +2,10 @@
  * 极简 Markdown 渲染器（零依赖、防 XSS）。
  * 支持子集：标题、段落、粗体/斜体/删除线/行内代码、链接（仅 http(s)）、
  * 引用、无序/有序列表（一层嵌套）、任务列表（- [ ] / - [x]）、
- * GFM 管道表格（含对齐）、分隔线、围栏代码块（带复制按钮）。
- * 所有原始 HTML 先转义，再生成受控标签；外链图片渲染为链接（不自动加载外部资源）。
- */
+ * GFM 管道表格（含对齐）、分隔线、围栏代码块（带复制按钮）、
+ * LaTeX 数学（$...$ / $$...$$ / \(...\) / \[...\]，Unicode 兜底 + KaTeX 增强）。
+ * 所有原始 HTML 先转义，再生成受控标签；外链图片渲染为链接（不自动加载外部资源） */
+import { prettifyTex } from './math'
 
 function escapeHtml(s: string): string {
   return s
@@ -13,6 +14,29 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+function unescapeHtml(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
+/** 行内数学是否"像公式"（避免货币误伤） */
+function looksMathy(texRaw: string): boolean {
+  if (texRaw.length === 0 || texRaw.length > 300) return false
+  if (/^\d+([.,]\d+)?$/.test(texRaw.trim())) return false // 纯数字=价格
+  return /[\\^_{}=<>+\-*/]|\\|[a-zA-Z]/.test(texRaw)
+}
+
+function mathSpan(escapedTex: string, display: boolean): string {
+  const pretty = prettifyTex(unescapeHtml(escapedTex))
+  const open = display ? 'div' : 'span'
+  const cls = display ? 'math-block' : 'math-inline'
+  return `<${open} class="${cls}" data-tex="${escapedTex}">${escapeHtml(pretty)}</${open}>`
 }
 
 function renderInline(text: string): string {
@@ -85,6 +109,29 @@ function renderInline(text: string): string {
             i = closeParen + 1
             continue
           }
+        }
+      }
+    }
+    // 行内数学 \( ... \)
+    if (src.startsWith('\\(', i)) {
+      const end = src.indexOf('\\)', i + 2)
+      if (end !== -1) {
+        const inner = src.slice(i + 2, end)
+        out += mathSpan(inner, false)
+        i = end + 2
+        continue
+      }
+    }
+    // 行内数学 $ ... $（货币启发式排除）
+    if (src[i] === '$' && i + 1 < src.length && src[i + 1] !== ' ' && src[i + 1] !== '$') {
+      let j = i + 1
+      while (j < src.length && src[j] !== '$') j++
+      if (j > i + 1 && j < src.length && src[j - 1] !== ' ') {
+        const inner = src.slice(i + 1, j)
+        if (looksMathy(unescapeHtml(inner))) {
+          out += mathSpan(inner, false)
+          i = j + 1
+          continue
         }
       }
     }
@@ -217,6 +264,41 @@ export function renderMarkdown(md: string): string {
   const para: string[] = []
   while (i < lines.length) {
     const line = lines[i]
+    const trimmed = line.trim()
+
+    // 块级数学 $$ ... $$（单行或多行）
+    if (trimmed === '$$' || (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4)) {
+      flushParagraph(para)
+      let tex: string
+      if (trimmed.length > 4) {
+        tex = trimmed.slice(2, -2)
+        i++
+      } else {
+        const buf: string[] = []
+        i++
+        while (i < lines.length && lines[i].trim() !== '$$') {
+          buf.push(lines[i])
+          i++
+        }
+        i++ // 跳过闭合 $$
+        tex = buf.join('\n')
+      }
+      out.push(mathSpan(escapeHtml(tex), true))
+      continue
+    }
+    // 块级数学 \[ ... \]
+    if (trimmed === '\\[') {
+      flushParagraph(para)
+      const buf: string[] = []
+      i++
+      while (i < lines.length && lines[i].trim() !== '\\]') {
+        buf.push(lines[i])
+        i++
+      }
+      i++
+      out.push(mathSpan(escapeHtml(buf.join('\n')), true))
+      continue
+    }
 
     // 围栏代码块
     const fence = /^```(\w*)\s*$/.exec(line.trim())

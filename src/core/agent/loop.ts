@@ -22,6 +22,7 @@ import type { ToolContext } from '../ports'
 import type { LLMClient } from '../llm/client'
 import type { ToolRegistry } from '../tools/registry'
 import { repairTrailingToolCalls } from '../session/repair'
+import { effectiveMessages } from '../session/session'
 import { buildContextView } from './context'
 
 export const DEFAULT_MAX_ITERATIONS = 24
@@ -115,8 +116,8 @@ export class AgentRunner {
     for (let iteration = 1; iteration <= this.maxIterations + 1; iteration++) {
       if (signal.aborted) throw new DOMException('aborted', 'AbortError')
       const forced = iteration === this.maxIterations + 1
-      // 上下文预算视图：会话日志不动，只折叠发给模型的旧工具结果（DSH surface 思想）
-      const view = buildContextView(session.messages)
+      // 上下文预算视图：压缩（摘要+尾部）→ 旧工具结果折叠；会话日志永不改动
+      const view = buildContextView(effectiveMessages(session))
       const messages: ChatMessage[] = [
         { role: 'system', content: this.deps.buildSystemPrompt(view.info.masked) },
         ...view.messages,

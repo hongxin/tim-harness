@@ -364,6 +364,54 @@ code, pre, .mono { font-family: var(--font-mono); }
 .align-right { text-align: right !important; }
 
 .md-imglink { font-style: normal; }
+
+/* ---------------- LaTeX 数学 ---------------- */
+
+.math-inline {
+  font-family: 'Times New Roman', 'STIX Two Math', 'Times', serif;
+  font-style: italic;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+.math-block {
+  font-family: 'Times New Roman', 'STIX Two Math', 'Times', serif;
+  font-style: italic;
+  text-align: center;
+  margin: 12px 0;
+  padding: 10px 8px;
+  font-size: 1.08em;
+  overflow-x: auto;
+  line-height: 1.7;
+}
+.md-body .katex { font-size: 1.05em; }
+.md-body .katex-display { margin: 0; }
+
+/* ---------------- 压缩分界卡 ---------------- */
+
+.compact-divider {
+  border: 1px dashed var(--border-strong); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-panel-2) 70%, transparent);
+  padding: 8px 12px; font-size: 12px; color: var(--text-dim);
+}
+.compact-divider summary {
+  cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  user-select: none; list-style: none;
+}
+.compact-divider summary::-webkit-details-marker { display: none; }
+.compact-divider summary::before {
+  content: '▾'; color: var(--text-faint); font-size: 10px; transition: transform 0.15s;
+}
+.compact-divider[open] summary::before { transform: rotate(180deg); }
+.cd-badge {
+  flex-shrink: 0; font-size: 10.5px; font-weight: 700; color: var(--amber);
+  border: 1px solid rgba(232, 179, 57, 0.45); background: rgba(232, 179, 57, 0.08);
+  padding: 1px 7px; border-radius: 10px; font-family: var(--font-mono);
+}
+.cd-time { margin-left: auto; font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); }
+.cd-summary {
+  margin-top: 8px; padding: 10px 12px; border-top: 1px dashed var(--border);
+  font-size: 13px; color: var(--text-dim);
+}
 .md-code {
   font-size: 12.8px; background: var(--bg-raised); border: 1px solid var(--border);
   border-radius: 5px; padding: 1px 5px; color: var(--amber);

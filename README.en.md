@@ -49,12 +49,13 @@ npm run dev        # http://localhost:5188
 |---|---|
 | Multi-turn tool calling | 13 tools: `ls / read_file / write_file / edit_file / grep / glob / run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user / skill` |
 | Skills | `/skills/<name>/SKILL.md` auto-indexed into the system prompt; loaded on demand via the `skill` tool — the agent can even author new skills itself |
-| Rich rendering | GFM tables (with column alignment), task lists, strikethrough, nested lists, copyable code blocks |
+| Rich rendering | GFM tables (with column alignment), task lists, strikethrough, nested lists, copyable code blocks; LaTeX math (`$..$`/`$$..$$`, Unicode fallback + precise KaTeX rendering) |
 | Virtual workspace | OPFS-persistent file system (survives reloads), with import / export / download |
 | Code sandbox | Isolated Web Worker execution with console capture; infinite loops terminated in ~1.5s |
 | Live HTML preview | Sandboxed iframe + console capture with level filters; auto-refreshes when the agent writes. Big view adds device width presets (375/768/1280), open-in-new-tab, Esc to close |
 | Resizable workspace | Drag the panel's left edge to widen it (280–720px, remembered) — handy for watching pages as they are being generated |
 | Context management | Three-layer budget strategy: old tool outputs auto-folded (last 4 kept full, ls/grep/glob "project map" exempt); live context gauge above the input; long sessions never overflow |
+| Compaction ⚡ | The LLM summarizes early messages once; afterwards every turn sends only "summary + recent tail" — tokens are billed on the tail, not the whole history. Manual button + automatic at 80% watermark; the full transcript is never touched |
 | Tool approval (optional) | When enabled in settings, write operations require a human approval (once per session) |
 | Drag & drop | Drop files anywhere to import them into the workspace; tool cards "quiet on success, loud on failure" |
 | Sub-agents | `spawn_agent` runs self-contained tasks in a fresh context to conserve the main conversation |

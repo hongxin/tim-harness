@@ -51,6 +51,19 @@ export function TopBar({
       </div>
       <div className="topbar-right">
         {snapshot.providerLabel && <span className="model-chip">{snapshot.providerLabel}</span>}
+        <button
+          type="button"
+          className={`btn-icon ${snapshot.compacting ? 'on' : ''}`}
+          title={
+            snapshot.compacting
+              ? '正在压缩上下文（LLM 摘要中）…'
+              : '压缩上下文：把早期消息折叠为 LLM 摘要，此后每轮按尾部计费（省 token）'
+          }
+          disabled={snapshot.compacting}
+          onClick={() => void runtime.compactSession(false)}
+        >
+          {snapshot.compacting ? <span className="spin-dot" /> : '⚡'}
+        </button>
         <button type="button" className={`btn-icon ${rightOpen ? 'on' : ''}`} onClick={onToggleRight} title="工作区面板">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="3" y="4" width="18" height="16" rx="2" />
