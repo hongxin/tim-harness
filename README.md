@@ -2,6 +2,12 @@
 
 **装进一个浏览器页面的随身大模型工程 Harness。**
 
+[![CI](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml)
+[![Deploy](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml)
+
+> 🌐 **[在线演示（打开即用，无需安装）](https://hongxin.github.io/tim-harness/)** —— 自备任意
+> OpenAI 兼容 API Key（DeepSeek / OpenAI / 本地 Ollama），密钥只存在你自己的浏览器里。
+
 打开页面 → 填一次 API Key → 你就拥有：多轮工具调用的智能体、持久化虚拟工作区、
 JS 代码沙箱、子代理派发、任务清单 —— 全部运行在你的浏览器里，没有后端，没有安装。
 
