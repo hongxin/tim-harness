@@ -1,15 +1,19 @@
 /**
  * 右侧面板：工作区文件树 + HTML 实时预览（沙箱 iframe + console 捕获）+ 任务列表。
- * 预览是 JetBot 亮点的升级版：opaque-origin 沙箱渲染 + 控制台输出回传 + 写入自动刷新。
+ * 面板左缘可拖拽调宽（280–720px，localStorage 记忆）；
+ * 大窗预览：设备尺寸预设、控制台分级过滤、新标签打开、Esc 关闭、状态栏。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileEntry } from '../../core/ports'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
 import { downloadBlob, downloadText, looksBinary, readFileAsBytes, readFileAsText } from '../fileops'
+import { RP_WIDTH_DEFAULT, RP_WIDTH_MAX, RP_WIDTH_MIN } from '../App'
 
 type Tab = 'files' | 'preview' | 'todos'
 type ConsoleEntry = { level: string; text: string; ts: number }
+type DeviceWidth = 'auto' | 375 | 768 | 1280
+type ConsoleFilter = 'all' | 'log' | 'warn' | 'error'
 
 const CONSOLE_HOOK = `<script>(function(){
   var fmt=function(v){try{if(typeof v==='string')return v;if(v instanceof Error)return v.message;return JSON.stringify(v)}catch(e){return String(v)}};
@@ -30,6 +34,12 @@ function fmtSize(n?: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+const levelClass = (level: string): ConsoleFilter => {
+  if (level === 'error') return 'error'
+  if (level === 'warn') return 'warn'
+  return 'log'
 }
 
 /* ---------------- 文件树 ---------------- */
@@ -106,9 +116,7 @@ function TreeRow({
           {node.name}
         </span>
         {isNew && <span className="ft-new-badge" title="本会话由智能体写入">new</span>}
-        {node.kind === 'file' && (
-          <span className="ft-size">{fmtSize(node.size)}</span>
-        )}
+        {node.kind === 'file' && <span className="ft-size">{fmtSize(node.size)}</span>}
         {node.kind === 'file' && (
           <span className="ft-actions">
             {isHtml && (
@@ -157,17 +165,97 @@ function TreeRow({
   )
 }
 
+/* ---------------- 控制台面板 ---------------- */
+
+function ConsolePanel({
+  entries,
+  onClear,
+  compact,
+  filter,
+  onFilterChange,
+}: {
+  entries: ConsoleEntry[]
+  onClear: () => void
+  compact: boolean
+  filter: ConsoleFilter
+  onFilterChange: (f: ConsoleFilter) => void
+}) {
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const filtered = useMemo(
+    () => (filter === 'all' ? entries : entries.filter((c) => levelClass(c.level) === filter)),
+    [entries, filter],
+  )
+  const errCount = entries.filter((c) => c.level === 'error').length
+  const warnCount = entries.filter((c) => c.level === 'warn').length
+
+  useEffect(() => {
+    const el = bodyRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [filtered.length])
+
+  const filters: { key: ConsoleFilter; label: string }[] = [
+    { key: 'all', label: `全部 ${entries.length}` },
+    { key: 'log', label: '日志' },
+    { key: 'warn', label: warnCount ? `警告 ${warnCount}` : '警告' },
+    { key: 'error', label: errCount ? `错误 ${errCount}` : '错误' },
+  ]
+
+  return (
+    <div className={`preview-console ${compact ? 'compact' : ''}`}>
+      <div className="pc-head">
+        {!compact ? (
+          <span className="pc-filters">
+            {filters.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                className={`pc-filter ${filter === f.key ? 'on' : ''} ${f.key === 'error' && errCount ? 'has-err' : ''} ${f.key === 'warn' && warnCount ? 'has-warn' : ''}`}
+                onClick={() => onFilterChange(f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </span>
+        ) : (
+          <span>
+            控制台{entries.length > 0 && <span className="pc-count">{entries.length}</span>}
+            {errCount > 0 && <span className="pc-err">{errCount} 错误</span>}
+          </span>
+        )}
+        <button type="button" className="pc-clear" onClick={onClear}>
+          清空
+        </button>
+      </div>
+      <div className="pc-body" ref={bodyRef}>
+        {filtered.length === 0 ? (
+          <div className="pc-empty">{entries.length === 0 ? '暂无输出 —— 页面内 console.log / 报错会显示在这里' : '当前筛选下无输出'}</div>
+        ) : (
+          filtered.map((c, i) => (
+            <div key={i} className={`pc-line pc-${levelClass(c.level)}`}>
+              {c.text}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ---------------- 主面板 ---------------- */
 
 export function RightPanel({
   snapshot,
   runtime,
   fsMode,
+  width,
+  onWidthChange,
   onClose,
 }: {
   snapshot: RuntimeSnapshot
   runtime: HarnessRuntime
   fsMode: 'opfs' | 'memory'
+  width: number
+  onWidthChange: (w: number) => void
   onClose: () => void
 }) {
   const [tab, setTab] = useState<Tab>('files')
@@ -177,12 +265,15 @@ export function RightPanel({
   const [previewSrc, setPreviewSrc] = useState('')
   const [previewNonce, setPreviewNonce] = useState(0)
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([])
+  const [consoleFilter, setConsoleFilter] = useState<ConsoleFilter>('all')
   const [bigView, setBigView] = useState(false)
+  const [device, setDevice] = useState<DeviceWidth>('auto')
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null)
   const [modal, setModal] = useState<{ path: string; content: string } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['/']))
   const importInput = useRef<HTMLInputElement>(null)
 
-  /* 文件列表：仅在文件系统真实变更（fsRev）或切换到文件 tab 时刷新，避免流式期间高频 IO */
+  /* 文件列表：仅在文件系统真实变更（fsRev）或 tab 切换时刷新 */
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
@@ -222,13 +313,15 @@ export function RightPanel({
         const content = await runtime.fsAdapter.readFile(path)
         setPreviewPath(path)
         setPreviewSrc((prev) => {
-          if (prev === injectConsoleHook(content) && !force) return prev
+          const next = injectConsoleHook(content)
+          if (prev === next && !force) return prev
           setConsoleEntries([])
-          return injectConsoleHook(content)
+          setRefreshedAt(Date.now())
+          return next
         })
       } catch {
         setPreviewPath(path)
-        setPreviewSrc(`<pre>无法读取 ${path}</pre>`)
+        setPreviewSrc(`<pre style="padding:12px;font-family:sans-serif">无法读取 ${path}</pre>`)
       }
     },
     [runtime],
@@ -240,6 +333,13 @@ export function RightPanel({
     void loadPreview(path, true)
   }
 
+  const reloadPreview = () => {
+    if (!previewPath) return
+    setConsoleEntries([])
+    setPreviewNonce((n) => n + 1)
+    setRefreshedAt(Date.now())
+  }
+
   /* 智能体写入 html 后自动刷新当前预览 */
   useEffect(() => {
     if (tab !== 'preview' || !previewPath) return
@@ -247,6 +347,43 @@ export function RightPanel({
     else void loadPreview(previewPath)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot.fsRev])
+
+  /* 大窗预览：Esc 关闭 */
+  useEffect(() => {
+    if (!bigView) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setBigView(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [bigView])
+
+  /* 新标签页打开（Blob URL，带 console 钩子，脱离面板全屏使用） */
+  const openInNewTab = () => {
+    const blob = new Blob([previewSrc], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  /* 面板宽度拖拽（左缘手柄；拖动期间禁用 iframe 指针事件防吞） */
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = width
+    const onMove = (ev: PointerEvent) => {
+      const w = Math.min(RP_WIDTH_MAX, Math.max(RP_WIDTH_MIN, startW + (startX - ev.clientX)))
+      onWidthChange(Math.round(w))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      document.body.classList.remove('rp-resizing')
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    document.body.classList.add('rp-resizing')
+  }
 
   const downloadFile = async (path: string) => {
     try {
@@ -289,7 +426,7 @@ export function RightPanel({
 
   const tree = useMemo(() => buildTree(files), [files])
   const todos = snapshot.session?.todos ?? []
-  const errCount = consoleEntries.filter((c) => c.level === 'error').length
+  const devicePx = device === 'auto' ? null : device
 
   const toggle = (p: string) =>
     setExpanded((prev) => {
@@ -299,94 +436,27 @@ export function RightPanel({
       return next
     })
 
-  const previewFrame = (height?: string) => (
-    <iframe
-      key={`${previewPath}#${previewNonce}`}
-      className="preview-frame"
-      style={height ? { height } : undefined}
-      sandbox="allow-scripts allow-modals allow-forms allow-popups"
-      srcDoc={previewSrc}
-      title="HTML 预览"
-    />
-  )
-
-  const consolePanel = (compact: boolean) => (
-    <div className={`preview-console ${compact ? 'compact' : ''}`}>
-      <div className="pc-head">
-        <span>
-          控制台{consoleEntries.length > 0 && <span className="pc-count">{consoleEntries.length}</span>}
-          {errCount > 0 && <span className="pc-err">{errCount} 错误</span>}
-        </span>
-        <button type="button" className="pc-clear" onClick={() => setConsoleEntries([])}>
-          清空
-        </button>
-      </div>
-      <div className="pc-body">
-        {consoleEntries.length === 0 ? (
-          <div className="pc-empty">暂无输出 —— 页面内 console.log / 报错会显示在这里</div>
-        ) : (
-          consoleEntries.map((c, i) => (
-            <div key={i} className={`pc-line pc-${c.level}`}>
-              {c.text}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  )
-
-  const previewBody = (
-    <>
-      <div className="preview-toolbar">
-        {previewPath ? (
-          <>
-            <span className="preview-path" title={previewPath}>
-              {previewPath.replace(/^\//, '')}
-            </span>
-            <button type="button" className="btn-ghost btn-sm" onClick={() => previewPath && void loadPreview(previewPath, true)} title="重新加载">
-              ⟳
-            </button>
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setBigView(true)} title="大窗预览">
-              ⤢
-            </button>
-            {htmlFiles.length > 1 && (
-              <select className="preview-select" value={previewPath} onChange={(e) => openPreview(e.target.value)}>
-                {htmlFiles.map((f) => (
-                  <option key={f.path} value={f.path}>
-                    {f.path.replace(/^\//, '')}
-                  </option>
-                ))}
-              </select>
-            )}
-          </>
-        ) : (
-          <span className="preview-path">HTML 预览</span>
-        )}
-      </div>
-      {previewPath ? (
-        <div className="preview-frame-wrap">{previewFrame()}</div>
-      ) : htmlFiles.length > 0 ? (
-        <div className="preview-pick">
-          <div className="rp-empty">选择一个 HTML 文件开始预览：</div>
-          {htmlFiles.map((f) => (
-            <button key={f.path} type="button" className="preview-pick-item" onClick={() => openPreview(f.path)}>
-              ▶ {f.path.replace(/^\//, '')}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="rp-empty">
-          还没有可预览的 HTML 文件。
-          <br />
-          让智能体「写一个 game.html 小游戏」，写完即可在这里预览运行效果。
-        </div>
-      )}
-      {previewPath && consolePanel(true)}
-    </>
-  )
+  const fileSwitcher = (className: string) =>
+    htmlFiles.length > 1 ? (
+      <select className={className} value={previewPath ?? ''} onChange={(e) => openPreview(e.target.value)} title="切换预览文件">
+        {htmlFiles.map((f) => (
+          <option key={f.path} value={f.path}>
+            {f.path.replace(/^\//, '')}
+          </option>
+        ))}
+      </select>
+    ) : null
 
   return (
     <aside className="rightpanel">
+      <div
+        className="rp-resizer"
+        onPointerDown={startResize}
+        onDoubleClick={() => onWidthChange(RP_WIDTH_DEFAULT)}
+        title="拖动调整宽度 · 双击恢复默认"
+        role="separator"
+        aria-orientation="vertical"
+      />
       <div className="rp-tabs">
         <button type="button" className={`rp-tab ${tab === 'files' ? 'on' : ''}`} onClick={() => setTab('files')}>
           文件 <span className="rp-count">{files.filter((f) => f.kind === 'file').length}</span>
@@ -450,7 +520,61 @@ export function RightPanel({
           )}
         </div>
       ) : tab === 'preview' ? (
-        <div className="rp-body preview-body">{previewBody}</div>
+        <div className="rp-body preview-body">
+          <div className="preview-toolbar">
+            {previewPath ? (
+              <>
+                <span className="preview-path" title={previewPath}>
+                  {previewPath.replace(/^\//, '')}
+                </span>
+                {fileSwitcher('preview-select')}
+                <button type="button" className="btn-ghost btn-sm" onClick={reloadPreview} title="重新加载">
+                  ⟳
+                </button>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => setBigView(true)} title="大窗预览（Esc 关闭）">
+                  ⤢
+                </button>
+              </>
+            ) : (
+              <span className="preview-path">HTML 预览</span>
+            )}
+          </div>
+          {previewPath ? (
+            bigView ? (
+              <div className="preview-frame-wrap preview-paused">
+                <div className="pc-empty" style={{ padding: '24px 12px' }}>已在大窗预览中运行 · 关闭大窗后返回</div>
+              </div>
+            ) : (
+              <div className="preview-frame-wrap">
+                <iframe
+                  key={`${previewPath}#${previewNonce}`}
+                  className="preview-frame"
+                  sandbox="allow-scripts allow-modals allow-forms allow-popups"
+                  srcDoc={previewSrc}
+                  title="HTML 预览"
+                />
+              </div>
+            )
+          ) : htmlFiles.length > 0 ? (
+            <div className="preview-pick">
+              <div className="rp-empty">选择一个 HTML 文件开始预览：</div>
+              {htmlFiles.map((f) => (
+                <button key={f.path} type="button" className="preview-pick-item" onClick={() => openPreview(f.path)}>
+                  ▶ {f.path.replace(/^\//, '')}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rp-empty">
+              还没有可预览的 HTML 文件。
+              <br />
+              让智能体「写一个 game.html 小游戏」，写完即可在这里预览运行效果。
+            </div>
+          )}
+          {previewPath && !bigView && (
+            <ConsolePanel entries={consoleEntries} onClear={() => setConsoleEntries([])} compact filter={consoleFilter} onFilterChange={setConsoleFilter} />
+          )}
+        </div>
       ) : (
         <div className="rp-body">
           {todos.length === 0 ? (
@@ -479,7 +603,14 @@ export function RightPanel({
               <span className="modal-title">{modal.path}</span>
               <div className="modal-head-actions">
                 {/\.html?$/i.test(modal.path) && (
-                  <button type="button" className="btn-ghost btn-sm" onClick={() => { setModal(null); openPreview(modal.path) }}>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    onClick={() => {
+                      setModal(null)
+                      openPreview(modal.path)
+                    }}
+                  >
                     在预览中打开
                   </button>
                 )}
@@ -498,21 +629,65 @@ export function RightPanel({
 
       {bigView && previewPath && (
         <div className="modal-overlay preview-big" onClick={() => setBigView(false)}>
-          <div className="preview-big-inner" onClick={(e) => e.stopPropagation()}>
-            <div className="preview-toolbar">
-              <span className="preview-path">{previewPath.replace(/^\//, '')}</span>
-              <div className="modal-head-actions">
-                <button type="button" className="btn-ghost btn-sm" onClick={() => setPreviewNonce((n) => n + 1)}>
+          <div className="pb-inner" onClick={(e) => e.stopPropagation()}>
+            <div className="pb-head">
+              <div className="pb-title">
+                <span className="pb-live-dot" title="实时预览运行中" />
+                <span className="pb-path" title={previewPath}>
+                  {previewPath.replace(/^\//, '')}
+                </span>
+                {fileSwitcher('preview-select')}
+              </div>
+              <div className="pb-actions">
+                <span className="pb-devices">
+                  {(['auto', 375, 768, 1280] as DeviceWidth[]).map((d) => (
+                    <button
+                      key={String(d)}
+                      type="button"
+                      className={`pb-device-btn ${device === d ? 'on' : ''}`}
+                      onClick={() => setDevice(d)}
+                      title={d === 'auto' ? '自适应宽度' : `${d}px 设备宽度`}
+                    >
+                      {d === 'auto' ? '自适应' : `${d}`}
+                    </button>
+                  ))}
+                </span>
+                <button type="button" className="btn-ghost btn-sm" onClick={reloadPreview} title="重新加载">
                   ⟳ 重载
                 </button>
-                <button type="button" className="btn-icon" onClick={() => setBigView(false)}>
+                <button type="button" className="btn-ghost btn-sm" onClick={openInNewTab} title="在新标签页打开（Blob URL）">
+                  ↗ 新标签
+                </button>
+                <button type="button" className="btn-icon" onClick={() => setBigView(false)} title="关闭（Esc）">
                   ×
                 </button>
               </div>
             </div>
-            <div className="preview-big-main">
-              {previewFrame('100%')}
-              {consolePanel(false)}
+            <div className="pb-main">
+              <div className="pb-stage">
+                <div className={`pb-device ${devicePx ? 'fixed' : 'auto'}`} style={devicePx ? { width: devicePx } : undefined}>
+                  <div className="pb-device-bar">
+                    <span className="pb-device-url">{previewPath.replace(/^\//, '')}</span>
+                    <span className="pb-device-size">{devicePx ? `${devicePx}px` : '自适应'}</span>
+                  </div>
+                  <iframe
+                    key={`${previewPath}#${previewNonce}`}
+                    className="pb-frame"
+                    sandbox="allow-scripts allow-modals allow-forms allow-popups"
+                    srcDoc={previewSrc}
+                    title="HTML 大窗预览"
+                  />
+                </div>
+              </div>
+              <div className="pb-console">
+                <ConsolePanel entries={consoleEntries} onClear={() => setConsoleEntries([])} compact={false} filter={consoleFilter} onFilterChange={setConsoleFilter} />
+              </div>
+            </div>
+            <div className="pb-status">
+              <span>沙箱运行：allow-scripts · opaque origin（无法触碰本站存储与密钥）</span>
+              <span>
+                {refreshedAt ? `最近刷新 ${new Date(refreshedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '未刷新'} · Esc 关闭
+              </span>
             </div>
           </div>
         </div>

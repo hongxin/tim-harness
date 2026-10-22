@@ -2,6 +2,7 @@
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
 import { relTime } from '../fileops'
+import { GitHubMark, REPO_URL } from './GitHubMark'
 
 export function Sidebar({
   snapshot,
@@ -63,6 +64,9 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-footer">
+        <a className="btn-ghost btn-footer gh-footer" href={REPO_URL} target="_blank" rel="noreferrer" title="源码仓库 · 欢迎 Star">
+          <GitHubMark size={13} />
+        </a>
         <button type="button" className="btn-ghost btn-footer" onClick={onToggleTheme} title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}>
           {theme === 'dark' ? '☀' : '☾'}
         </button>

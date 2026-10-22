@@ -1,4 +1,4 @@
-/** 应用外壳：布局与全局状态（设置开关 / 右面板 / 主题） */
+/** 应用外壳：布局与全局状态（设置开关 / 右面板宽度拖拽 / 主题） */
 import { useEffect, useState } from 'react'
 import { useRuntime, useRuntimeHost } from './store'
 import { Sidebar } from './components/Sidebar'
@@ -23,15 +23,40 @@ function BootSplash() {
   )
 }
 
+export const RP_WIDTH_KEY = 'tim-harness:rp-width'
+export const RP_WIDTH_DEFAULT = 340
+export const RP_WIDTH_MIN = 280
+export const RP_WIDTH_MAX = 720
+
+export function loadRightPanelWidth(): number {
+  try {
+    const v = Number(localStorage.getItem(RP_WIDTH_KEY))
+    if (Number.isFinite(v) && v >= RP_WIDTH_MIN && v <= RP_WIDTH_MAX) return Math.round(v)
+  } catch {
+    /* ignore */
+  }
+  return RP_WIDTH_DEFAULT
+}
+
 function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
   const { runtime, snapshot } = useRuntime()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(true)
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'dark')
+  const [rpWidth, setRpWidth] = useState(loadRightPanelWidth)
 
   useEffect(() => {
     if (window.innerWidth < 1100) setRightOpen(false)
   }, [])
+
+  // 宽度持久化（记忆用户偏好）
+  useEffect(() => {
+    try {
+      localStorage.setItem(RP_WIDTH_KEY, String(rpWidth))
+    } catch {
+      /* ignore */
+    }
+  }, [rpWidth])
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -45,7 +70,10 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
   }
 
   return (
-    <div className={`app ${rightOpen ? 'with-right' : ''}`}>
+    <div
+      className={`app ${rightOpen ? 'with-right' : ''}`}
+      style={rightOpen ? ({ '--rp-width': `${rpWidth}px` } as React.CSSProperties) : undefined}
+    >
       <Sidebar
         snapshot={snapshot}
         runtime={runtime}
@@ -58,7 +86,16 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
         <ChatView snapshot={snapshot} runtime={runtime} />
         <Composer snapshot={snapshot} runtime={runtime} askSlot={<AskUserCard snapshot={snapshot} runtime={runtime} />} />
       </main>
-      {rightOpen && <RightPanel snapshot={snapshot} runtime={runtime} fsMode={fsMode} onClose={() => setRightOpen(false)} />}
+      {rightOpen && (
+        <RightPanel
+          snapshot={snapshot}
+          runtime={runtime}
+          fsMode={fsMode}
+          width={rpWidth}
+          onWidthChange={setRpWidth}
+          onClose={() => setRightOpen(false)}
+        />
+      )}
       {settingsOpen && <SettingsDialog runtime={runtime} onClose={() => setSettingsOpen(false)} />}
     </div>
   )

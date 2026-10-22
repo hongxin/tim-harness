@@ -5,6 +5,7 @@ import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
 import { renderMarkdown } from '../markdown'
 import { ToolCallCard } from './ToolCallCard'
+import { GitHubMark, REPO_STAR_URL, REPO_URL } from './GitHubMark'
 
 function onMarkdownClick(e: React.MouseEvent) {
   const target = e.target as HTMLElement
@@ -89,6 +90,15 @@ function EmptyState({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime:
           </button>
         ))}
       </div>
+      <div className="gh-row">
+        <a className="gh-link" href={REPO_URL} target="_blank" rel="noreferrer">
+          <GitHubMark size={14} /> hongxin/tim-harness
+        </a>
+        <a className="gh-star" href={REPO_STAR_URL} target="_blank" rel="noreferrer">
+          ★ 觉得好用？点个 Star
+        </a>
+      </div>
+      <p className="gh-hint">开源 · 纯浏览器运行 · API Key 只存在你自己的浏览器里</p>
     </div>
   )
 }

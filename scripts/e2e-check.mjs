@@ -138,14 +138,54 @@ if (pcCount < 2) throw new Error('控制台面板行数异常: ' + pcCount)
 console.log(`✓ HTML 预览：iframe 渲染 + 控制台回传（${pcCount} 条，含错误捕获）`)
 await page.screenshot({ path: new URL('../docs/screenshots/preview.png', import.meta.url).pathname })
 
-// 大窗预览
-await page.click('.preview-toolbar .btn-ghost[title="大窗预览"]')
-await page.waitForSelector('.preview-big', { timeout: 5_000 })
+// 大窗预览：新设计（设备预设 / 控制台过滤 / Esc 关闭）
+await page.click('.preview-toolbar .btn-ghost[title*="大窗预览"]')
+await page.waitForSelector('.pb-inner', { timeout: 5_000 })
+await page.click('.pc-filter:has-text("错误")')
+await page.click('.pc-filter:has-text("全部")')
+await page.click('.pb-device-btn:has-text("375")')
+await page.waitForTimeout(200)
+const devW = await page.$eval('.pb-device', (el) => el.offsetWidth)
+if (Math.abs(devW - 375) > 4) throw new Error('设备预设宽度异常: ' + devW)
+console.log('✓ 大窗预览：设备尺寸预设（375px）与控制台过滤正常')
 await page.screenshot({ path: new URL('../docs/screenshots/preview-big.png', import.meta.url).pathname })
-await page.click('.preview-big .btn-icon')
-console.log('✓ 大窗预览可开合')
+await page.keyboard.press('Escape')
+await page.waitForTimeout(200)
+if (await page.isVisible('.pb-inner')) throw new Error('Esc 未关闭大窗预览')
+console.log('✓ 大窗预览：Esc 关闭')
 
-// 8. 输入区
+// 8. 右栏拖拽调宽（左缘手柄，向左拖 140px 增宽）
+const rpBefore = await page.$eval('.rightpanel', (el) => el.offsetWidth)
+const handle = await page.$eval('.rp-resizer', (el) => {
+  const r = el.getBoundingClientRect()
+  return { x: r.x + r.width / 2, y: r.y + 120 }
+})
+await page.mouse.move(handle.x, handle.y)
+await page.mouse.down()
+await page.mouse.move(handle.x - 140, handle.y, { steps: 8 })
+await page.mouse.up()
+await page.waitForTimeout(250)
+const rpAfter = await page.$eval('.rightpanel', (el) => el.offsetWidth)
+if (rpAfter - rpBefore < 100) throw new Error(`拖拽调宽失效: ${rpBefore} → ${rpAfter}`)
+const persisted = await page.evaluate(() => localStorage.getItem('tim-harness:rp-width'))
+if (!persisted || Number(persisted) < rpBefore + 100) throw new Error('宽度未持久化: ' + persisted)
+console.log(`✓ 右栏拖拽调宽：${rpBefore}px → ${rpAfter}px（已记忆 ${persisted}px）`)
+await page.screenshot({ path: new URL('../docs/screenshots/panel-wide.png', import.meta.url).pathname })
+
+// 9. GitHub 入口（空态）
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  rt.session.messages.length = 0
+  rt.notify()
+})
+await page.waitForTimeout(300)
+const ghHref = await page.getAttribute('.gh-link', 'href')
+if (!ghHref || !ghHref.includes('github.com/hongxin/tim-harness')) throw new Error('空态 GitHub 链接异常: ' + ghHref)
+const ghStar = await page.getAttribute('.gh-star', 'href')
+if (!ghStar || !ghStar.includes('stargazers')) throw new Error('Star 链接异常: ' + ghStar)
+console.log('✓ GitHub 入口与 Star 引导（空态）')
+
+// 10. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')
 if (val !== '测试输入') throw new Error('输入框异常')
