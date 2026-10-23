@@ -8,7 +8,7 @@ import { ApprovalCard, AskUserCard, Composer } from './components/Composer'
 import { RightPanel } from './components/RightPanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { GoalBar, GoalModal } from './components/Goal'
-const CosmosView = React.lazy(() => import('./components/CosmosView').then(m => ({ default: m.CosmosView })))
+const CosmosView = React.lazy(() => import('./components/CosmosView2D').then(m => ({ default: m.CosmosView })))
 import { looksBinary, readFileAsBytes, readFileAsText } from './fileops'
 
 function BootSplash() {

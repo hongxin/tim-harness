@@ -434,8 +434,8 @@ if (cosmosVisible < 1 && loadingVisible < 1) {
   throw new Error('Cosmos 视图未出现（截图 /tmp/cosmos-debug.png）')
 }
 if (loadingVisible >= 1) console.log('  (cosmos 仍在加载中，three.js chunk 较大)')
-const canvasExists = await page.evaluate(() => !!document.querySelector('.cosmos-canvas canvas'))
-if (!canvasExists) throw new Error('WebGL canvas 未创建')
+const canvasExists = await page.evaluate(() => !!document.querySelector('.cosmos-canvas2d'))
+if (!canvasExists) throw new Error('Canvas 未创建')
 const hudVisible = await page.isVisible('.cosmos-hud').catch(() => false)
 if (!hudVisible) throw new Error('HUD 未显示')
 await page.screenshot({ path: new URL('../docs/screenshots/cosmos.png', import.meta.url).pathname })
