@@ -819,7 +819,12 @@ export class HarnessRuntime {
         return this.balanceInfo
       }
       const data = JSON.parse(await res.text())
-      const info = data?.balance_infos?.[0]
+      // balance_infos 是多币种数组：优先 CNY（主用货币），无 CNY 取首个非零项，兜底取第一条
+      const infos: Array<{ currency?: string; total_balance?: string; granted_balance?: string; topped_up_balance?: string }> =
+        Array.isArray(data?.balance_infos) ? data.balance_infos : []
+      const cny = infos.find((b) => (b.currency ?? '').toUpperCase() === 'CNY')
+      const nonZero = infos.find((b) => Number(b.total_balance ?? 0) > 0)
+      const info = cny ?? nonZero ?? infos[0]
       if (!info) return this.balanceInfo
       this.balanceInfo = {
         total: String(info.total_balance ?? '0'),

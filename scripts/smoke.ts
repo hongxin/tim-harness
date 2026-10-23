@@ -1115,9 +1115,13 @@ const FINAL = () => [
 
 {
   // mock：第一个请求是 chat，第二个是 GET /user/balance
+  // 模拟 DeepSeek 真实返回：USD 在前（0），CNY 在后（有余额）
   const balanceBody = JSON.stringify({
     is_available: true,
-    balance_infos: [{ currency: 'CNY', total_balance: '42.50', granted_balance: '2.50', topped_up_balance: '40.00' }],
+    balance_infos: [
+      { currency: 'USD', total_balance: '0.00', granted_balance: '0.00', topped_up_balance: '0.00' },
+      { currency: 'CNY', total_balance: '42.50', granted_balance: '2.50', topped_up_balance: '40.00' },
+    ],
   })
   let requestCount = 0
   const t18 = new ScriptedTransport([
