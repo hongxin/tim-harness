@@ -18,13 +18,25 @@ export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; r
     engine.setOnNodeSelect(setSelected)
     engine.setOnCaptionUpdate(setCaption)
     engineRef.current = engine
-    return () => { engine.destroy(); engineRef.current = null }
+    // 监听主题变化，实时更新 Cosmos 配色
+    const themeObserver = new MutationObserver(() => {
+      engineRef.current?.updateTheme()
+    })
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    })
+    return () => {
+      themeObserver.disconnect()
+      engine.destroy(); engineRef.current = null
+    }
   }, [])
 
   useEffect(() => {
     const session = snapshot.session
     if (!session) return
     const { nodes, edges, clusters } = mapSessionToCosmos(session.messages, session.compacted?.foldedCount ?? 0)
+    engineRef.current?.updateTheme()
     engineRef.current?.setNodes(nodes, edges, clusters)
     setTourSteps(engineRef.current?.getTourSteps() ?? [])
   }, [snapshot.rev, snapshot.session]) // eslint-disable-line react-hooks/exhaustive-deps
