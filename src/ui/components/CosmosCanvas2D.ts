@@ -7,7 +7,7 @@ export interface CosmosEdge2D { id:string;fromId:string;toId:string; type:'flow'
 export interface TurnCluster { turnId:number;centerX:number;centerY:number;radius:number;nodeIds:string[];summary:string;hue:number;toolCount:number;hasError:boolean;totalDuration:number }
 export const TOOL_HUE:Record<string,number>={ls:140,read_file:200,write_file:160,edit_file:280,grep:180,glob:150,run_js:45,web_fetch:320,web_search:220,todo_write:100,spawn_agent:300,ask_user:50,skill:260,goal_update:120,snapshot_save:170,snapshot_restore:175,snapshot_list:165,snapshot_diff:168,snapshot_delete:172}
 export const KIND_HUE:Record<string,number>={user:30,assistant:260,tool:210,'sub-agent':300,core:45,file:100}
-const R:Record<string,number>={user:32,assistant:28,tool:16,'sub-agent':38,core:44,file:12}
+const R:Record<string,number>={user:40,assistant:28,tool:16,'sub-agent':38,core:44,file:12}
 
 
 interface SimS{nodes:Map<string,CosmosNode2D>;edges:CosmosEdge2D[];clusters:Map<number,TurnCluster>;cooled:boolean}
@@ -26,11 +26,11 @@ interface SimS{nodes:Map<string,CosmosNode2D>;edges:CosmosEdge2D[];clusters:Map<
  *   仅在节点重叠时施加分离力（不影响语义位置）
  *   弹簧力保持连接的视觉关联
  */
-const GAP = 300
+const GAP = 340
 const USER_Y = -220
 const ASST_Y = 0
 const TOOL_Y0 = 220
-const TOOL_DH = 78
+const TOOL_DH = 90
 const JITTER = 22
 const COLLIDE = 15000
 const COLLIDE_RANGE = 1.5
@@ -52,7 +52,7 @@ export function tickSim(sim: SimS) {
       const row = n.gridRow ?? 0
       const toolCount = arr.filter((m) => m.turnId === n.turnId && m.kind === 'tool').length
       const centerOffset = (Math.min(toolCount, 3) - 1) / 2 * 44
-      targetX = n.turnId * GAP + col * 66 - centerOffset
+      targetX = n.turnId * GAP + col * 80 - centerOffset
       targetY = TOOL_Y0 + row * TOOL_DH
     }
     else { targetX = n.turnId * GAP + 100; targetY = 50 }
@@ -142,7 +142,7 @@ const nodes:CosmosNode2D[]=[],edges:CosmosEdge2D[]=[];let turn=0
 if(folded>0)nodes.push({id:'core',kind:'core',content:`⚡ ${folded} 条已压缩`,turnId:-1,birthTime:performance.now(),x:-GAP,y:0,vx:0,vy:0,radius:R.core,pinned:false,hue:KIND_HUE.core})
 msgs.slice(folded).forEach((m,i)=>{const now=performance.now()
 if(m.role==='user'){turn++;const id=`u${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'user',content:(m.content??'').slice(0,120),turnId:turn,birthTime:now,x:tx,y:USER_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.user,pinned:false,hue:KIND_HUE.user});const p=nodes[nodes.length-2];if(p)edges.push({id:`xt${i}`,fromId:p.id,toId:id,type:'cross-turn'})}
-else if(m.role==='assistant'){const id=`a${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'assistant',content:(m.content??'').slice(0,120)||`${m.tool_calls?.length??0} 工具`,turnId:turn,birthTime:now,x:tx,y:ASST_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.assistant,pinned:false,hue:KIND_HUE.assistant});const un=nodes.find(n=>n.kind==='user'&&n.turnId===turn);if(un)edges.push({id:`f${i}`,fromId:un.id,toId:id,type:'flow'});if(m.tool_calls)m.tool_calls.forEach((tc,j)=>{const tid=`t${i}_${j}`;nodes.push({id:tid,kind:'tool',content:tc.name,toolName:tc.name,turnId:turn,birthTime:now,x:tx+(j%3-(Math.min(m.tool_calls!.length,3)-1)/2)*66+(Math.random()-.5)*JITTER,y:TOOL_Y0+Math.floor(j/3)*TOOL_DH+(Math.random()-.5)*JITTER, gridCol:j%3, gridRow:Math.floor(j/3),vx:0,vy:0,radius:R.tool,pinned:false,hue:TOOL_HUE[tc.name]??210});edges.push({id:`g${tid}`,fromId:id,toId:tid,type:'grid'})})}
+else if(m.role==='assistant'){const id=`a${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'assistant',content:(m.content??'').slice(0,120)||`${m.tool_calls?.length??0} 工具`,turnId:turn,birthTime:now,x:tx,y:ASST_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.assistant,pinned:false,hue:KIND_HUE.assistant});const un=nodes.find(n=>n.kind==='user'&&n.turnId===turn);if(un)edges.push({id:`f${i}`,fromId:un.id,toId:id,type:'flow'});if(m.tool_calls)m.tool_calls.forEach((tc,j)=>{const tid=`t${i}_${j}`;nodes.push({id:tid,kind:'tool',content:tc.name,toolName:tc.name,turnId:turn,birthTime:now,x:tx+(j%3-(Math.min(m.tool_calls!.length,3)-1)/2)*80+(Math.random()-.5)*JITTER,y:TOOL_Y0+Math.floor(j/3)*TOOL_DH+(Math.random()-.5)*JITTER, gridCol:j%3, gridRow:Math.floor(j/3),vx:0,vy:0,radius:R.tool,pinned:false,hue:TOOL_HUE[tc.name]??210});edges.push({id:`g${tid}`,fromId:id,toId:tid,type:'grid'})})}
 else if(m.role==='tool'){const tn=nodes.find(n=>n.kind==='tool'&&n.turnId===turn&&n.toolName===m.name&&n.durationMs==null);if(tn){tn.isError=m.toolOk===false;tn.durationMs=m.durationMs;tn.content=`${m.name} ${m.toolOk===false?'✗':'✓'}`}}})
 return{nodes,edges,clusters:[]}}
 interface Star{x:number;y:number;size:number;layer:number;alpha:number;twinkle:boolean}
@@ -231,7 +231,7 @@ if (this.sim.clusters.size > 1) {
     // 等高线：工具数差异越大，线越明显（推理深度的跳跃）
     const depthDiff = Math.abs(curr.toolCount - prev.toolCount)
     if (depthDiff > 0) {
-      const alpha = Math.min(0.08, depthDiff * 0.02)
+      const alpha = Math.min(0.2, depthDiff * 0.05)
       ctx.strokeStyle = `hsla(210, 30%, 50%, ${alpha})`
       ctx.lineWidth = 1
       ctx.setLineDash([2, 6])
@@ -251,7 +251,7 @@ for (const n of this.sim.nodes.values()) {
   }
 }
 
-for(const e of this.sim.edges){const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;const isF=this.ft===null||a.turnId===this.ft||b.turnId===this.ft;if(!isF)continue;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.moveTo(x1,y1);if(e.type==='grid'){ctx.lineTo(x2,y2);ctx.strokeStyle=`hsla(${a.hue},40%,55%,.18)`;ctx.lineWidth=1.5}else{const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.sqrt(dx*dx+dy*dy)||1;ctx.quadraticCurveTo(mx-dy/l*l*.1,my+dx/l*l*.1,x2,y2);if(e.type==='cross-turn'){ctx.strokeStyle='hsla(200,40%,45%,.06)';ctx.lineWidth=1}else{ctx.strokeStyle='hsla(200,60%,55%,.3)';ctx.lineWidth=2.5}}ctx.stroke()}
+for(const e of this.sim.edges){const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;const isF=this.ft===null||a.turnId===this.ft||b.turnId===this.ft;if(!isF)continue;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.moveTo(x1,y1);if(e.type==='grid'){ctx.lineTo(x2,y2);ctx.strokeStyle=`hsla(${a.hue},40%,50%,.12)`;ctx.lineWidth=1}else{const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.sqrt(dx*dx+dy*dy)||1;ctx.quadraticCurveTo(mx-dy/l*l*.1,my+dx/l*l*.1,x2,y2);if(e.type==='cross-turn'){ctx.strokeStyle='hsla(200,50%,50%,.18)';ctx.lineWidth=2.5}else{ctx.strokeStyle='hsla(200,55%,50%,.22)';ctx.lineWidth=1.8}}ctx.stroke()}
 for(const p of this.pt){const e=this.sim.edges.find(ed=>ed.id===p.edgeId);if(!e||e.type==='grid')continue;const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;if(this.ft!==null&&a.turnId!==this.ft)continue;p.t=(p.t+.005)%1;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.arc(x1+(x2-x1)*p.t,y1+(y2-y1)*p.t,2.5,0,Math.PI*2);ctx.fillStyle='hsla(45,80%,70%,.6)';ctx.fill()}
 const fs=Math.max(9,11*this.z);ctx.textAlign='center';ctx.textBaseline='middle'
 for(const n of this.sim.nodes.values()){const[sx,sy]=this.w2s(n.x,n.y);const r=n.radius*this.z;if(r<2||sx<-r*3||sx>this.w+r*3||sy<-r*3||sy>this.h+r*3)continue;const isF=this.ft===null||n.turnId===this.ft;const al=isF?1:.12;const isH=this.hi===n.id;const isS=this.si===n.id;const ag=now-n.birthTime;const bi=Math.min(1,ag/800);const ea=1-(1-bi)**3;const er=r*ea;if(er<.5)continue;const{hue}=n;const sa=n.isError?90:70;const li=n.isError?40:n.kind==='core'?55:50;ctx.globalAlpha=al
@@ -259,6 +259,8 @@ const gr=er*(isH?2.5:1.5);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr)
 if(bi<1&&isF){const pl=Math.sin(bi*Math.PI)*.4;if(pl>0){ctx.beginPath();ctx.arc(sx,sy,er*(1+bi),0,Math.PI*2);ctx.strokeStyle=`hsla(${hue},80%,70%,${pl*al})`;ctx.lineWidth=2;ctx.stroke()}}
 if(n.kind==='tool'){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+15}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li-10}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=`hsla(${hue},${sa}%,${li+20}%,.4)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+15}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li-10}%,.7)`);ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
 if(isS){ctx.beginPath();ctx.arc(sx,sy,er+3,0,Math.PI*2);ctx.strokeStyle=`hsla(${hue},90%,70%,.8)`;ctx.lineWidth=2;ctx.stroke()}
+// 用户拖拽过的节点：虚线圆环标记（地图上的"用户标记"）
+if(n.dragged){ctx.beginPath();ctx.arc(sx,sy,er+5,0,Math.PI*2);ctx.strokeStyle='hsla(45,60%,60%,.3)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([])}
 if(n.isError){ctx.fillStyle=`hsla(0,90%,60%,${.9*al})`;ctx.font=`bold ${Math.max(9,er*.5)}px sans-serif`;ctx.fillText('✗',sx+er*.5,sy-er*.5)}
 if(this.z>.35&&isF){if(n.kind==='tool'){ctx.font=`bold ${Math.max(7,fs*.7)}px monospace`;ctx.fillStyle=`hsla(${hue},60%,80%,.9)`;const tn=n.toolName??n.content;ctx.fillText(tn.length>8?tn.slice(0,7)+'…':tn,sx,sy)}else{const mc=Math.floor(er*2/(fs*.55));let t=n.content;if(t.length>mc)t=t.slice(0,mc)+'…';if(t){ctx.font=`${fs}px -apple-system,sans-serif`;ctx.fillStyle=`hsla(${hue},30%,88%,.9)`;ctx.fillText(t,sx,sy+er*.4)}}}
 if(n.durationMs!=null&&n.durationMs>500&&this.z>.5&&isF){ctx.font=`${Math.max(7,fs*.7)}px monospace`;ctx.fillStyle='rgba(200,200,200,.3)';ctx.fillText(n.durationMs<1000?`${n.durationMs}ms`:`${(n.durationMs/1000).toFixed(1)}s`,sx,sy-er-8)}
