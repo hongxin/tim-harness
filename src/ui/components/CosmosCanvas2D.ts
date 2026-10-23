@@ -166,8 +166,85 @@ private rd(){const ctx=this.x;const now=performance.now();const tm=(now-this.t0)
 const bg=ctx.createRadialGradient(this.w/2,this.h/2,0,this.w/2,this.h/2,Math.max(this.w,this.h)*.7);bg.addColorStop(0,'hsl(230,20%,8%)');bg.addColorStop(1,'hsl(230,15%,3%)');ctx.fillStyle=bg;ctx.fillRect(0,0,this.w,this.h)
 const px=[.1,.3,.6];for(const s of this.st){const sx=(s.x+this.ox*px[s.layer])*this.z+this.w/2,sy=(s.y+this.oy*px[s.layer])*this.z+this.h/2;if(sx<-5||sx>this.w+5||sy<-5||sy>this.h+5)continue;ctx.beginPath();ctx.arc(sx,sy,s.size*this.z,0,Math.PI*2);ctx.fillStyle=`rgba(220,230,255,${s.twinkle?s.alpha*(.5+.5*Math.sin(tm*2+s.x*.01)):s.alpha})`;ctx.fill()}
 for(const c of this.sim.clusters.values()){const[sx,sy]=this.w2s(c.centerX,c.centerY);const r=c.radius*this.z;if(sx+r<0||sx-r>this.w)continue;const isF=this.ft===null||this.ft===c.turnId;ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.strokeStyle=`hsla(${c.hue},50%,55%,${isF?.08:.02})`;ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);if(this.z>.5&&c.turnId>=0){ctx.font=`${10*this.z}px monospace`;ctx.textAlign='center';ctx.fillStyle=`hsla(${c.hue},30%,60%,${isF?.35:.08})`;ctx.fillText(`T${c.turnId+1}`,sx,sy-r-8)}}
-for(const e of this.sim.edges){const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;const isF=this.ft===null||a.turnId===this.ft||b.turnId===this.ft;if(!isF)continue;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.moveTo(x1,y1);if(e.type==='grid'){ctx.lineTo(x2,y2);ctx.strokeStyle=`hsla(${a.hue},40%,55%,.12)`;ctx.lineWidth=1}else{const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.sqrt(dx*dx+dy*dy)||1;ctx.quadraticCurveTo(mx-dy/l*l*.1,my+dx/l*l*.1,x2,y2);if(e.type==='cross-turn'){ctx.strokeStyle='hsla(200,40%,45%,.06)';ctx.lineWidth=1}else{ctx.strokeStyle='hsla(200,60%,55%,.25)';ctx.lineWidth=1.5}}ctx.stroke()}
-for(const p of this.pt){const e=this.sim.edges.find(ed=>ed.id===p.edgeId);if(!e||e.type==='grid')continue;const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;if(this.ft!==null&&a.turnId!==this.ft)continue;p.t=(p.t+.005)%1;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.arc(x1+(x2-x1)*p.t,y1+(y2-y1)*p.t,1.5,0,Math.PI*2);ctx.fillStyle='hsla(45,80%,70%,.4)';ctx.fill()}
+// ─── 地形层：地图感的核心 ───
+
+// 1. 地面线（工具层的视觉基底，像地图的海平面）
+if (this.sim.nodes.size > 0) {
+  const toolNodes = Array.from(this.sim.nodes.values()).filter(n => n.kind === 'tool')
+  if (toolNodes.length > 0) {
+    const maxY = Math.max(...toolNodes.map(n => n.y + n.radius))
+    const [gx1] = this.w2s(-GAP, maxY)
+    const [gx2] = this.w2s((this.sim.nodes.size) * GAP, maxY)
+    const [, gy] = this.w2s(0, maxY + 10)
+    ctx.beginPath()
+    ctx.moveTo(Math.max(0, gx1), gy)
+    ctx.lineTo(Math.min(this.w, gx2), gy)
+    ctx.strokeStyle = 'hsla(210, 25%, 25%, 0.15)'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+}
+
+// 2. 回合领地（每个回合的微妙背景色块，像地图的行政区域）
+for (const c of this.sim.clusters.values()) {
+  if (c.turnId < 0) continue
+  const [sx] = this.w2s(c.centerX, 0)
+  const w = GAP * this.z * 0.7
+  const topY = this.h * 0.15
+  const botY = this.h * 0.85
+  const isF = this.ft === null || this.ft === c.turnId
+  const hue = c.hue
+  // 微妙的领地填充
+  const regionAlpha = isF ? 0.015 : 0.005
+  const grad = ctx.createLinearGradient(sx, topY, sx, botY)
+  grad.addColorStop(0, `hsla(${hue}, 30%, 50%, ${regionAlpha})`)
+  grad.addColorStop(1, `hsla(${hue}, 20%, 40%, ${regionAlpha * 0.5})`)
+  ctx.fillStyle = grad
+  ctx.fillRect(sx - w / 2, topY, w, botY - topY)
+  // 领地边界（左右各一条极淡的竖线）
+  if (isF && this.z > 0.4) {
+    ctx.strokeStyle = `hsla(${hue}, 40%, 50%, 0.03)`
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(sx - w/2, topY); ctx.lineTo(sx - w/2, botY); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(sx + w/2, topY); ctx.lineTo(sx + w/2, botY); ctx.stroke()
+  }
+}
+
+// 3. 等高线（回合间的分隔，暗示推理'深度'的变化）
+if (this.sim.clusters.size > 1) {
+  const sortedClusters = Array.from(this.sim.clusters.values())
+    .filter(c => c.turnId >= 0)
+    .sort((a, b) => a.turnId - b.turnId)
+  for (let i = 1; i < sortedClusters.length; i++) {
+    const prev = sortedClusters[i-1]
+    const curr = sortedClusters[i]
+    const midX = (prev.centerX + curr.centerX) / 2
+    const [sx] = this.w2s(midX, 0)
+    // 等高线：工具数差异越大，线越明显（推理深度的跳跃）
+    const depthDiff = Math.abs(curr.toolCount - prev.toolCount)
+    if (depthDiff > 0) {
+      const alpha = Math.min(0.08, depthDiff * 0.02)
+      ctx.strokeStyle = `hsla(210, 30%, 50%, ${alpha})`
+      ctx.lineWidth = 1
+      ctx.setLineDash([2, 6])
+      ctx.beginPath()
+      ctx.moveTo(sx, this.h * 0.12)
+      ctx.lineTo(sx, this.h * 0.88)
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+  }
+}
+
+// 4. 地标增强：用户节点更大更亮（像地图上的首都）
+for (const n of this.sim.nodes.values()) {
+  if (n.kind === 'user') {
+    n.radius = Math.max(n.radius, 36) // 用户节点最小 36（比 assistant 的 28 大）
+  }
+}
+
+for(const e of this.sim.edges){const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;const isF=this.ft===null||a.turnId===this.ft||b.turnId===this.ft;if(!isF)continue;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.moveTo(x1,y1);if(e.type==='grid'){ctx.lineTo(x2,y2);ctx.strokeStyle=`hsla(${a.hue},40%,55%,.18)`;ctx.lineWidth=1.5}else{const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.sqrt(dx*dx+dy*dy)||1;ctx.quadraticCurveTo(mx-dy/l*l*.1,my+dx/l*l*.1,x2,y2);if(e.type==='cross-turn'){ctx.strokeStyle='hsla(200,40%,45%,.06)';ctx.lineWidth=1}else{ctx.strokeStyle='hsla(200,60%,55%,.3)';ctx.lineWidth=2.5}}ctx.stroke()}
+for(const p of this.pt){const e=this.sim.edges.find(ed=>ed.id===p.edgeId);if(!e||e.type==='grid')continue;const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;if(this.ft!==null&&a.turnId!==this.ft)continue;p.t=(p.t+.005)%1;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.arc(x1+(x2-x1)*p.t,y1+(y2-y1)*p.t,2.5,0,Math.PI*2);ctx.fillStyle='hsla(45,80%,70%,.6)';ctx.fill()}
 const fs=Math.max(9,11*this.z);ctx.textAlign='center';ctx.textBaseline='middle'
 for(const n of this.sim.nodes.values()){const[sx,sy]=this.w2s(n.x,n.y);const r=n.radius*this.z;if(r<2||sx<-r*3||sx>this.w+r*3||sy<-r*3||sy>this.h+r*3)continue;const isF=this.ft===null||n.turnId===this.ft;const al=isF?1:.12;const isH=this.hi===n.id;const isS=this.si===n.id;const ag=now-n.birthTime;const bi=Math.min(1,ag/800);const ea=1-(1-bi)**3;const er=r*ea;if(er<.5)continue;const{hue}=n;const sa=n.isError?90:70;const li=n.isError?40:n.kind==='core'?55:50;ctx.globalAlpha=al
 const gr=er*(isH?2.5:1.5);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr);g.addColorStop(0,`hsla(${hue},${sa}%,65%,${(isH?.35:.15)*al})`);g.addColorStop(1,'transparent');ctx.beginPath();ctx.arc(sx,sy,gr,0,Math.PI*2);ctx.fillStyle=g;ctx.fill()
