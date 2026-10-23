@@ -2,39 +2,137 @@
  * Cosmos 2D v4 —— 约束力导向布局（Constrained Force-Directed）
  * 力场 + 语义约束 = 有机 + 有结构（参考中医药知识图谱可视化方法论）
  */
-export interface CosmosNode2D { id:string; kind:'user'|'assistant'|'tool'|'sub-agent'|'core'|'file'; content:string; toolName?:string; isError?:boolean; isRunning?:boolean; durationMs?:number; turnId:number; birthTime:number; x:number;y:number;vx:number;vy:number; radius:number; pinned:boolean; hue:number }
+export interface CosmosNode2D { id:string; kind:'user'|'assistant'|'tool'|'sub-agent'|'core'|'file'; content:string; toolName?:string; isError?:boolean; isRunning?:boolean; durationMs?:number; turnId:number; birthTime:number; x:number;y:number;vx:number;vy:number; radius:number; pinned:boolean; hue:number; gridCol?:number; gridRow?:number }
 export interface CosmosEdge2D { id:string;fromId:string;toId:string; type:'flow'|'cross-turn'|'grid' }
 export interface TurnCluster { turnId:number;centerX:number;centerY:number;radius:number;nodeIds:string[];summary:string;hue:number;toolCount:number;hasError:boolean;totalDuration:number }
 export const TOOL_HUE:Record<string,number>={ls:140,read_file:200,write_file:160,edit_file:280,grep:180,glob:150,run_js:45,web_fetch:320,web_search:220,todo_write:100,spawn_agent:300,ask_user:50,skill:260,goal_update:120,snapshot_save:170,snapshot_restore:175,snapshot_list:165,snapshot_diff:168,snapshot_delete:172}
 export const KIND_HUE:Record<string,number>={user:30,assistant:260,tool:210,'sub-agent':300,core:45,file:100}
 const R:Record<string,number>={user:32,assistant:28,tool:16,'sub-agent':38,core:44,file:12}
-const REP=5000,SPR=.006,REST=140,CP=.0006,DAMP=.84,MV=10,COOL=.05
-const TS=.004,TG=160,HS=.003,UY=-60,AY=0,TY=70,TC=.002,TR=3000
+
+
 interface SimS{nodes:Map<string,CosmosNode2D>;edges:CosmosEdge2D[];clusters:Map<number,TurnCluster>;cooled:boolean}
-export function tickSim(s:SimS){if(s.cooled||s.nodes.size<2)return;const a=Array.from(s.nodes.values());let en=0
-for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){const p=a[i],q=a[j];let dx=q.x-p.x,dy=q.y-p.y,d=Math.sqrt(dx*dx+dy*dy);if(d<1){dx=Math.random()-.5;dy=Math.random()-.5;d=1}const f=REP/(d*d),fx=dx/d*f,fy=dy/d*f;if(!p.pinned){p.vx-=fx;p.vy-=fy}if(!q.pinned){q.vx+=fx;q.vy+=fy}}
-for(const e of s.edges){const p=s.nodes.get(e.fromId),q=s.nodes.get(e.toId);if(!p||!q)continue;const dx=q.x-p.x,dy=q.y-p.y,d=Math.sqrt(dx*dx+dy*dy)||1,r=e.type==='cross-turn'?220:REST,f=SPR*(d-r),fx=dx/d*f,fy=dy/d*f;if(!p.pinned){p.vx+=fx;p.vy+=fy}if(!q.pinned){q.vx-=fx;q.vy-=fy}}
-// C1: temporal (left→right)
-for(const n of a){if(n.pinned)continue;n.vx+=(n.turnId*TG-n.x)*TS}
-// C2: hierarchy (user↑ assistant→ tool↓)
-for(const n of a){if(n.pinned)continue;const ty=n.kind==='user'?UY:n.kind==='assistant'?AY:n.kind==='tool'?TY:0;n.vy+=(ty-n.y)*HS}
-// C3: turn cohesion
-const bt=new Map<number,CosmosNode2D[]>();for(const n of a){if(!bt.has(n.turnId))bt.set(n.turnId,[]);bt.get(n.turnId)!.push(n)}
-for(const[,ns]of bt){if(ns.length<2)continue;let cx=0,cy=0;for(const n of ns){cx+=n.x;cy+=n.y}cx/=ns.length;cy/=ns.length;for(const n of ns){if(n.pinned)continue;n.vx+=(cx-n.x)*TC;n.vy+=(cy-n.y)*TC*.3}}
-// C4: inter-turn repel
-const tc=new Map<number,{x:number}>();for(const[t,ns]of bt){let cx=0;for(const n of ns)cx+=n.x;tc.set(t,{x:cx/ns.length})}
-const tids=[...tc.keys()];for(let i=0;i<tids.length;i++)for(let j=i+1;j<tids.length;j++){const ca=tc.get(tids[i])!,cb=tc.get(tids[j])!;const dx=cb.x-ca.x,d=Math.abs(dx)||1;if(d<TG*1.2){const f=TR/(d*d),fx=dx/d*f;const na=bt.get(tids[i])!,nb=bt.get(tids[j])!;for(const n of na)if(!n.pinned)n.vx-=fx/na.length;for(const n of nb)if(!n.pinned)n.vx+=fx/nb.length}}
-// apply
-for(const n of a){if(n.pinned)continue;n.vx-=n.x*CP;n.vy-=n.y*CP*.5;n.vx*=DAMP;n.vy*=DAMP;const sp=Math.sqrt(n.vx*n.vx+n.vy*n.vy);if(sp>MV){n.vx=n.vx/sp*MV;n.vy=n.vy/sp*MV}n.x+=n.vx;n.y+=n.vy;en+=n.vx*n.vx+n.vy*n.vy}
-if(en<COOL)s.cooled=true
-// update clusters
-for(const[t,ns]of bt){let cx=0,cy=0;for(const n of ns){cx+=n.x;cy+=n.y}cx/=ns.length;cy/=ns.length;let far=0;const ids:string[]=[];for(const n of ns){ids.push(n.id);far=Math.max(far,Math.sqrt((n.x-cx)**2+(n.y-cy)**2)+n.radius)}let c=s.clusters.get(t);if(!c){c={turnId:t,centerX:cx,centerY:cy,radius:60,nodeIds:ids,summary:`T${t+1}`,hue:210,toolCount:0,hasError:false,totalDuration:0};s.clusters.set(t,c)}c.centerX=cx;c.centerY=cy;c.radius=Math.max(far,50);c.nodeIds=ids;c.toolCount=ns.filter(n=>n.kind==='tool').length;c.hasError=ns.some(n=>n.isError);c.totalDuration=ns.reduce((s2,n)=>s2+(n.durationMs??0),0)}}
+/**
+ * 语义定位 + 力场微调（Semantic Layout + Force Refinement）
+ *
+ * 与"约束力导向"的本质区别：
+ * - 约束力导向：力场做骨架 + 约束力做引导 → 两种力打架 → 挤向中间
+ * - 语义定位：先确定语义位置 → 力场只做碰撞消解 → 位置稳定且有结构
+ *
+ * 语义定位（确定性）：
+ *   X = turnId × GAP + 工具偏移 + 微抖动
+ *   Y = 角色层级（用户 -90 / 助手 0 / 工具 100+行×40）+ 微抖动
+ *
+ * 力场微调（有机感）：
+ *   仅在节点重叠时施加分离力（不影响语义位置）
+ *   弹簧力保持连接的视觉关联
+ */
+const GAP = 220
+const USER_Y = -180
+const ASST_Y = 0
+const TOOL_Y0 = 180
+const TOOL_DH = 60
+const JITTER = 16
+const COLLIDE = 15000
+const COLLIDE_RANGE = 1.5
+
+export function tickSim(sim: SimS) {
+  if (sim.cooled || sim.nodes.size < 2) return
+  const arr = Array.from(sim.nodes.values())
+  let energy = 0
+
+  // 1. 语义锚定：每个节点被强力拉向其语义位置
+  for (const n of arr) {
+    if (n.pinned) continue
+    let targetX: number, targetY: number
+    if (n.kind === 'core') { targetX = -GAP; targetY = 0 }
+    else if (n.kind === 'user') { targetX = n.turnId * GAP; targetY = USER_Y }
+    else if (n.kind === 'assistant') { targetX = n.turnId * GAP; targetY = ASST_Y }
+    else if (n.kind === 'tool') {
+      const col = n.gridCol ?? 0
+      const row = n.gridRow ?? 0
+      const toolCount = arr.filter((m) => m.turnId === n.turnId && m.kind === 'tool').length
+      const centerOffset = (Math.min(toolCount, 3) - 1) / 2 * 44
+      targetX = n.turnId * GAP + col * 44 - centerOffset
+      targetY = TOOL_Y0 + row * TOOL_DH
+    }
+    else { targetX = n.turnId * GAP + 100; targetY = 50 }
+
+    // 强力锚定（比碰撞力强 → 语义位置是"家"）
+    n.vx += (targetX - n.x) * 0.15
+    n.vy += (targetY - n.y) * 0.15
+  }
+
+  // 2. 碰撞消解：仅在节点重叠时推开（不影响远处的语义位置）
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      const a = arr[i], b = arr[j]
+      const dx = b.x - a.x, dy = b.y - a.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const minDist = (a.radius + b.radius) * COLLIDE_RANGE
+      if (dist < minDist && dist > 0.1) {
+        const f = COLLIDE / (dist * dist)
+        const fx = (dx / dist) * f, fy = (dy / dist) * f * 0.3 // Y 方向弱（让层级主导）
+        if (!a.pinned) { a.vx -= fx; a.vy -= fy }
+        if (!b.pinned) { b.vx += fx; b.vy += fy }
+      }
+    }
+  }
+
+  // 3. 连接弹簧（视觉关联提示，很弱）
+  for (const e of sim.edges) {
+    const a = sim.nodes.get(e.fromId), b = sim.nodes.get(e.toId)
+    if (!a || !b) continue
+    if (a.turnId !== b.turnId) continue // 跨回合连接不用弹簧（由语义位置保证间距）
+    const dx = b.x - a.x, dy = b.y - a.y
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    const f = 0.001 * Math.max(0, dist - 80)
+    const fx = (dx / dist) * f, fy = (dy / dist) * f * 0.1
+    if (!a.pinned) { a.vx += fx; a.vy += fy }
+    if (!b.pinned) { b.vx -= fx; b.vy -= fy }
+  }
+
+  // 4. 应用运动
+  for (const n of arr) {
+    if (n.pinned) continue
+    n.vx *= 0.75; n.vy *= 0.75
+    const sp = Math.sqrt(n.vx * n.vx + n.vy * n.vy)
+    if (sp > 6) { n.vx = n.vx / sp * 6; n.vy = n.vy / sp * 6 }
+    n.x += n.vx; n.y += n.vy
+    energy += n.vx * n.vx + n.vy * n.vy
+  }
+  if (energy < 0.01) sim.cooled = true
+
+  // 更新回合聚集
+  const bt = new Map<number, CosmosNode2D[]>()
+  for (const n of arr) {
+    if (!bt.has(n.turnId)) bt.set(n.turnId, [])
+    bt.get(n.turnId)!.push(n)
+  }
+  for (const [tid, ns] of bt) {
+    let cx = 0, cy = 0
+    for (const n of ns) { cx += n.x; cy += n.y }
+    cx /= ns.length; cy /= ns.length
+    let far = 0
+    for (const n of ns) far = Math.max(far, Math.sqrt((n.x-cx)**2 + (n.y-cy)**2) + n.radius)
+    let c = sim.clusters.get(tid)
+    if (!c) {
+      c = { turnId: tid, centerX: cx, centerY: cy, radius: Math.max(far, 50), nodeIds: ns.map(n=>n.id),
+            summary: `T${tid+1}`, hue: 210, toolCount: ns.filter(n=>n.kind==='tool').length,
+            hasError: ns.some(n=>n.isError), totalDuration: ns.reduce((s,n)=>s+(n.durationMs??0),0) }
+      sim.clusters.set(tid, c)
+    }
+    c.centerX = cx; c.centerY = cy; c.radius = Math.max(far, 50)
+    c.nodeIds = ns.map(n=>n.id); c.toolCount = ns.filter(n=>n.kind==='tool').length
+    c.hasError = ns.some(n=>n.isError); c.totalDuration = ns.reduce((s,n)=>s+(n.durationMs??0),0)
+  }
+}
+
 export function mapSessionToCosmos(msgs:Array<{role:string;content?:string|null;tool_calls?:Array<{id:string;name:string}>;name?:string;toolOk?:boolean;durationMs?:number}>,folded:number):{nodes:CosmosNode2D[];edges:CosmosEdge2D[];clusters:TurnCluster[]}{
 const nodes:CosmosNode2D[]=[],edges:CosmosEdge2D[]=[];let turn=0
-if(folded>0)nodes.push({id:'core',kind:'core',content:`⚡ ${folded} 条已压缩`,turnId:-1,birthTime:performance.now(),x:-180,y:0,vx:0,vy:0,radius:R.core,pinned:false,hue:KIND_HUE.core})
+if(folded>0)nodes.push({id:'core',kind:'core',content:`⚡ ${folded} 条已压缩`,turnId:-1,birthTime:performance.now(),x:-GAP,y:0,vx:0,vy:0,radius:R.core,pinned:false,hue:KIND_HUE.core})
 msgs.slice(folded).forEach((m,i)=>{const now=performance.now()
-if(m.role==='user'){turn++;const id=`u${i}`,tx=turn*TG+(Math.random()-.5)*40;nodes.push({id,kind:'user',content:(m.content??'').slice(0,120),turnId:turn,birthTime:now,x:tx,y:UY+(Math.random()-.5)*20,vx:0,vy:0,radius:R.user,pinned:false,hue:KIND_HUE.user});const p=nodes[nodes.length-2];if(p)edges.push({id:`xt${i}`,fromId:p.id,toId:id,type:'cross-turn'})}
-else if(m.role==='assistant'){const id=`a${i}`,tx=turn*TG+(Math.random()-.5)*40;nodes.push({id,kind:'assistant',content:(m.content??'').slice(0,120)||`${m.tool_calls?.length??0} 工具`,turnId:turn,birthTime:now,x:tx,y:AY+(Math.random()-.5)*20,vx:0,vy:0,radius:R.assistant,pinned:false,hue:KIND_HUE.assistant});const un=nodes.find(n=>n.kind==='user'&&n.turnId===turn);if(un)edges.push({id:`f${i}`,fromId:un.id,toId:id,type:'flow'});if(m.tool_calls)m.tool_calls.forEach((tc,j)=>{const tid=`t${i}_${j}`;nodes.push({id:tid,kind:'tool',content:tc.name,toolName:tc.name,turnId:turn,birthTime:now,x:tx+(j-m.tool_calls!.length/2+.5)*36,y:TY+Math.floor(j/3)*32+(Math.random()-.5)*12,vx:0,vy:0,radius:R.tool,pinned:false,hue:TOOL_HUE[tc.name]??210});edges.push({id:`g${tid}`,fromId:id,toId:tid,type:'grid'})})}
+if(m.role==='user'){turn++;const id=`u${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'user',content:(m.content??'').slice(0,120),turnId:turn,birthTime:now,x:tx,y:USER_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.user,pinned:false,hue:KIND_HUE.user});const p=nodes[nodes.length-2];if(p)edges.push({id:`xt${i}`,fromId:p.id,toId:id,type:'cross-turn'})}
+else if(m.role==='assistant'){const id=`a${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'assistant',content:(m.content??'').slice(0,120)||`${m.tool_calls?.length??0} 工具`,turnId:turn,birthTime:now,x:tx,y:ASST_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.assistant,pinned:false,hue:KIND_HUE.assistant});const un=nodes.find(n=>n.kind==='user'&&n.turnId===turn);if(un)edges.push({id:`f${i}`,fromId:un.id,toId:id,type:'flow'});if(m.tool_calls)m.tool_calls.forEach((tc,j)=>{const tid=`t${i}_${j}`;nodes.push({id:tid,kind:'tool',content:tc.name,toolName:tc.name,turnId:turn,birthTime:now,x:tx+(j%3-(Math.min(m.tool_calls!.length,3)-1)/2)*44+(Math.random()-.5)*JITTER,y:TOOL_Y0+Math.floor(j/3)*TOOL_DH+(Math.random()-.5)*JITTER, gridCol:j%3, gridRow:Math.floor(j/3),vx:0,vy:0,radius:R.tool,pinned:false,hue:TOOL_HUE[tc.name]??210});edges.push({id:`g${tid}`,fromId:id,toId:tid,type:'grid'})})}
 else if(m.role==='tool'){const tn=nodes.find(n=>n.kind==='tool'&&n.turnId===turn&&n.toolName===m.name&&n.durationMs==null);if(tn){tn.isError=m.toolOk===false;tn.durationMs=m.durationMs;tn.content=`${m.name} ${m.toolOk===false?'✗':'✓'}`}}})
 return{nodes,edges,clusters:[]}}
 interface Star{x:number;y:number;size:number;layer:number;alpha:number;twinkle:boolean}
@@ -59,17 +157,17 @@ private od=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();const[wx,wy
 private om=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();if(this.pan){this.cam=null;this.ox+=(e.clientX-this.ps.x)/this.z;this.oy+=(e.clientY-this.ps.y)/this.z;this.ps={x:e.clientX,y:e.clientY};return}const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);this.hi=null;for(const n of this.sim.nodes.values()){const dx=wx-n.x,dy=wy-n.y;if(dx*dx+dy*dy<=n.radius*n.radius){this.hi=n.id;break}}this.c.style.cursor=this.hi?'pointer':'grab'}
 private ou=()=>{this.pan=false}
 private rs(){const p=this.c.parentElement;if(!p)return;this.dpr=devicePixelRatio||1;this.w=p.clientWidth;this.h=p.clientHeight;this.c.width=this.w*this.dpr;this.c.height=this.h*this.dpr;this.c.style.width=`${this.w}px`;this.c.style.height=`${this.h}px`;this.x.setTransform(this.dpr,0,0,this.dpr,0,0)}
-private is(){this.st=[];for(let i=0;i<200;i++)this.st.push({x:Math.random()*3000-1500,y:Math.random()*2000-1000,size:Math.random()*1.5+.3,layer:Math.floor(Math.random()*3),alpha:Math.random()*.5+.15,twinkle:Math.random()<.1})}
+private is(){this.st=[];for(let i=0;i<120;i++)this.st.push({x:Math.random()*3000-1500,y:Math.random()*2000-1000,size:Math.random()*1.5+.3,layer:Math.floor(Math.random()*3),alpha:Math.random()*.5+.15,twinkle:Math.random()<.1})}
 private lp=()=>{if(this.cam){const a=this.cam;a.t+=16/a.d;if(a.t>=1){this.ox=a.tx;this.oy=a.ty;this.z=a.tz;this.cam=null}else{const e=a.t<.5?4*a.t**3:1-(-2*a.t+2)**3/2;this.ox=a.fx+(a.tx-a.fx)*e;this.oy=a.fy+(a.ty-a.fy)*e;this.z=a.fz+(a.tz-a.fz)*e}}tickSim(this.sim);this.rd();this.ai=requestAnimationFrame(this.lp)}
 private rd(){const ctx=this.x;const now=performance.now();const tm=(now-this.t0)/1000
 const bg=ctx.createRadialGradient(this.w/2,this.h/2,0,this.w/2,this.h/2,Math.max(this.w,this.h)*.7);bg.addColorStop(0,'hsl(230,20%,8%)');bg.addColorStop(1,'hsl(230,15%,3%)');ctx.fillStyle=bg;ctx.fillRect(0,0,this.w,this.h)
 const px=[.1,.3,.6];for(const s of this.st){const sx=(s.x+this.ox*px[s.layer])*this.z+this.w/2,sy=(s.y+this.oy*px[s.layer])*this.z+this.h/2;if(sx<-5||sx>this.w+5||sy<-5||sy>this.h+5)continue;ctx.beginPath();ctx.arc(sx,sy,s.size*this.z,0,Math.PI*2);ctx.fillStyle=`rgba(220,230,255,${s.twinkle?s.alpha*(.5+.5*Math.sin(tm*2+s.x*.01)):s.alpha})`;ctx.fill()}
-for(const c of this.sim.clusters.values()){const[sx,sy]=this.w2s(c.centerX,c.centerY);const r=c.radius*this.z;if(sx+r<0||sx-r>this.w)continue;const isF=this.ft===null||this.ft===c.turnId;ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.strokeStyle=`hsla(${c.hue},50%,50%,${isF?.05:.015})`;ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);if(this.z>.5&&c.turnId>=0){ctx.font=`${10*this.z}px monospace`;ctx.textAlign='center';ctx.fillStyle=`hsla(${c.hue},30%,60%,${isF?.35:.08})`;ctx.fillText(`T${c.turnId+1}`,sx,sy-r-8)}}
-for(const e of this.sim.edges){const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;const isF=this.ft===null||a.turnId===this.ft||b.turnId===this.ft;if(!isF)continue;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.moveTo(x1,y1);if(e.type==='grid'){ctx.lineTo(x2,y2);ctx.strokeStyle=`hsla(${a.hue},40%,50%,.08)`;ctx.lineWidth=1}else{const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.sqrt(dx*dx+dy*dy)||1;ctx.quadraticCurveTo(mx-dy/l*l*.1,my+dx/l*l*.1,x2,y2);if(e.type==='cross-turn'){ctx.strokeStyle='hsla(200,40%,45%,.06)';ctx.lineWidth=1}else{ctx.strokeStyle='hsla(200,60%,50%,.15)';ctx.lineWidth=1.5}}ctx.stroke()}
+for(const c of this.sim.clusters.values()){const[sx,sy]=this.w2s(c.centerX,c.centerY);const r=c.radius*this.z;if(sx+r<0||sx-r>this.w)continue;const isF=this.ft===null||this.ft===c.turnId;ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.strokeStyle=`hsla(${c.hue},50%,55%,${isF?.08:.02})`;ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);if(this.z>.5&&c.turnId>=0){ctx.font=`${10*this.z}px monospace`;ctx.textAlign='center';ctx.fillStyle=`hsla(${c.hue},30%,60%,${isF?.35:.08})`;ctx.fillText(`T${c.turnId+1}`,sx,sy-r-8)}}
+for(const e of this.sim.edges){const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;const isF=this.ft===null||a.turnId===this.ft||b.turnId===this.ft;if(!isF)continue;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.moveTo(x1,y1);if(e.type==='grid'){ctx.lineTo(x2,y2);ctx.strokeStyle=`hsla(${a.hue},40%,55%,.12)`;ctx.lineWidth=1}else{const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.sqrt(dx*dx+dy*dy)||1;ctx.quadraticCurveTo(mx-dy/l*l*.1,my+dx/l*l*.1,x2,y2);if(e.type==='cross-turn'){ctx.strokeStyle='hsla(200,40%,45%,.06)';ctx.lineWidth=1}else{ctx.strokeStyle='hsla(200,60%,55%,.25)';ctx.lineWidth=1.5}}ctx.stroke()}
 for(const p of this.pt){const e=this.sim.edges.find(ed=>ed.id===p.edgeId);if(!e||e.type==='grid')continue;const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;if(this.ft!==null&&a.turnId!==this.ft)continue;p.t=(p.t+.005)%1;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.arc(x1+(x2-x1)*p.t,y1+(y2-y1)*p.t,1.5,0,Math.PI*2);ctx.fillStyle='hsla(45,80%,70%,.4)';ctx.fill()}
 const fs=Math.max(9,11*this.z);ctx.textAlign='center';ctx.textBaseline='middle'
 for(const n of this.sim.nodes.values()){const[sx,sy]=this.w2s(n.x,n.y);const r=n.radius*this.z;if(r<2||sx<-r*3||sx>this.w+r*3||sy<-r*3||sy>this.h+r*3)continue;const isF=this.ft===null||n.turnId===this.ft;const al=isF?1:.12;const isH=this.hi===n.id;const isS=this.si===n.id;const ag=now-n.birthTime;const bi=Math.min(1,ag/800);const ea=1-(1-bi)**3;const er=r*ea;if(er<.5)continue;const{hue}=n;const sa=n.isError?90:70;const li=n.isError?40:n.kind==='core'?55:50;ctx.globalAlpha=al
-const gr=er*(isH?3:2);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr);g.addColorStop(0,`hsla(${hue},${sa}%,60%,${(isH?.4:.2)*al})`);g.addColorStop(1,'transparent');ctx.beginPath();ctx.arc(sx,sy,gr,0,Math.PI*2);ctx.fillStyle=g;ctx.fill()
+const gr=er*(isH?2.5:1.5);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr);g.addColorStop(0,`hsla(${hue},${sa}%,65%,${(isH?.35:.15)*al})`);g.addColorStop(1,'transparent');ctx.beginPath();ctx.arc(sx,sy,gr,0,Math.PI*2);ctx.fillStyle=g;ctx.fill()
 if(bi<1&&isF){const pl=Math.sin(bi*Math.PI)*.4;if(pl>0){ctx.beginPath();ctx.arc(sx,sy,er*(1+bi),0,Math.PI*2);ctx.strokeStyle=`hsla(${hue},80%,70%,${pl*al})`;ctx.lineWidth=2;ctx.stroke()}}
 if(n.kind==='tool'){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+15}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li-10}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=`hsla(${hue},${sa}%,${li+20}%,.4)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+15}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li-10}%,.7)`);ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
 if(isS){ctx.beginPath();ctx.arc(sx,sy,er+3,0,Math.PI*2);ctx.strokeStyle=`hsla(${hue},90%,70%,.8)`;ctx.lineWidth=2;ctx.stroke()}
