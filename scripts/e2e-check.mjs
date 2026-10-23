@@ -424,6 +424,28 @@ const balChip = await page.textContent('.balance-chip').catch(() => null)
 if (!balChip || !balChip.includes('88.20')) throw new Error('余额芯片未渲染: ' + balChip)
 console.log(`✓ 余额显示：芯片位置与样式正确（${balChip.trim()}）`)
 
+// 13.8 Cosmos 3D 视图切换
+await page.click('.btn-icon[title*="星图"]').catch(() => {})
+await page.waitForTimeout(3500) // three.js 懒加载可能较慢
+const cosmosVisible = await page.locator('.cosmos-view').count()
+const loadingVisible = await page.locator('.cosmos-loading').count()
+if (cosmosVisible < 1 && loadingVisible < 1) {
+  await page.screenshot({ path: '/tmp/cosmos-debug.png' })
+  throw new Error('Cosmos 视图未出现（截图 /tmp/cosmos-debug.png）')
+}
+if (loadingVisible >= 1) console.log('  (cosmos 仍在加载中，three.js chunk 较大)')
+const canvasExists = await page.evaluate(() => !!document.querySelector('.cosmos-canvas canvas'))
+if (!canvasExists) throw new Error('WebGL canvas 未创建')
+const hudVisible = await page.isVisible('.cosmos-hud').catch(() => false)
+if (!hudVisible) throw new Error('HUD 未显示')
+await page.screenshot({ path: new URL('../docs/screenshots/cosmos.png', import.meta.url).pathname })
+console.log('✓ Cosmos 3D：视图切换、WebGL canvas 与 HUD 正常')
+// 切回对话
+await page.click('.btn-icon[title*="对话"]')
+await page.waitForTimeout(300)
+if (await page.isVisible('.cosmos-view')) throw new Error('切回失败')
+console.log('✓ Cosmos 3D：切回对话视图正常')
+
 // 14. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')

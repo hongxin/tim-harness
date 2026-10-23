@@ -9,12 +9,16 @@ export function TopBar({
   rightOpen,
   onToggleRight,
   onOpenGoal,
+  viewMode,
+  onToggleView,
 }: {
   snapshot: RuntimeSnapshot
   runtime: HarnessRuntime
   rightOpen: boolean
   onToggleRight: () => void
   onOpenGoal: () => void
+  viewMode: 'chat' | 'cosmos'
+  onToggleView: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
@@ -53,6 +57,14 @@ export function TopBar({
       </div>
       <div className="topbar-right">
         {snapshot.providerLabel && <span className="model-chip">{snapshot.providerLabel}</span>}
+        <button
+          type="button"
+          className={`btn-icon ${viewMode === 'cosmos' ? 'on' : ''}`}
+          title={viewMode === 'cosmos' ? '切换回对话视图' : '智能体星图：3D 会话可视化'}
+          onClick={onToggleView}
+        >
+          🌌
+        </button>
         <button
           type="button"
           className={`btn-icon ${snapshot.session?.goal ? 'on' : ''}`}

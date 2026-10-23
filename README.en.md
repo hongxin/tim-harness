@@ -64,6 +64,7 @@ npm run dev        # http://localhost:5188
 | Dual-channel prompt | Stable system section is byte-identical across turns (provider prefix-cache hits, lower cost); volatile facts arrive as a "supersedes" snapshot at the end |
 | Token economy | Five cost defenses: slim tool outputs (offset/limit paging) → prefix caching (live hit-rate gauge) → view folding → **incremental compaction** (second pass costs only the delta) → cost tiers (eco/standard/full, one switch) |
 | Drag & drop | Drop files anywhere to import them into the workspace; tool cards "quiet on success, loud on failure" |
+| Cosmos 3D 🌌 | Agent galaxy: messages spiral in 3D (user=gold octahedron, assistant=cyan icosahedron, tools=colored cubes), context budget ring, guided tour with step controls, focus dimming, auto-rotate |
 | WeChat PoC 🧪 | Four wx adapters prove the core ports over unmodified (chunked SSE / Storage / FileSystemManager / honest sandbox degradation) — [see docs](docs/05-wechat-poc.md) |
 | Sub-agents | `spawn_agent` runs self-contained tasks in a fresh context to conserve the main conversation |
 | Task list | The agent maintains its plan with `todo_write`, projected live in the side panel |
