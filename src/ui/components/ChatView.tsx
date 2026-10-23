@@ -83,9 +83,9 @@ function CompactionDivider({ snapshot }: { snapshot: RuntimeSnapshot }) {
 }
 
 const EXAMPLES = [
-  { title: '📐 斐波那契前 20 项', text: '用 run_js 计算斐波那契数列前 20 项，把结果写入 fib.md，并读回来确认。' },
-  { title: '🎮 做一个小游戏', text: '写一个打砖块 HTML 小游戏到 game.html（单文件，含 CSS/JS），要能键盘操作。写完告诉我怎么预览。' },
-  { title: '🔍 数据分析', text: '写一段 JS 生成 100 个正态分布随机数存入 data.json，再用另一段 JS 计算均值和标准差并给出结论。' },
+  { title: '计算并验证', text: '用 run_js 计算斐波那契数列前 20 项，写入 fib.md 并读回确认' },
+  { title: '构建可玩的游戏', text: '写一个打砖块 HTML 小游戏到 game.html（单文件），完成后告诉我怎么预览' },
+  { title: '数据分析', text: '生成 100 个正态分布随机数存入 data.json，计算均值和标准差并给出结论' },
 ]
 
 function EmptyState({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
@@ -93,15 +93,8 @@ function EmptyState({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime:
   const needsKey = provider && !provider.apiKey && !/localhost|127\.0\.0\.1/.test(provider.baseURL)
   return (
     <div className="empty-state">
-      <div className="empty-logo">
-        <svg viewBox="0 0 64 64" width="72" height="72">
-          <rect x="4" y="4" width="56" height="56" rx="14" fill="none" stroke="currentColor" strokeWidth="2.5" opacity="0.4" />
-          <path d="M16 24l10 8-10 8" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-          <rect x="30" y="37" width="18" height="4.5" rx="2.25" fill="currentColor" opacity="0.8" />
-        </svg>
-      </div>
-      <h1>Tim Harness</h1>
-      <p className="empty-sub">装进这个页面的随身大模型工程台 —— 会话、文件、代码沙箱、子代理，全部在你的浏览器里。</p>
+      <h1>Tim Harness<span className="empty-cursor">_</span></h1>
+      <p className="empty-sub">一个浏览器页面，装载你的整套大模型工程 harness。</p>
       {needsKey && (
         <div className="empty-warn">
           当前 Provider「{provider?.name}」还没有 API Key。请先到右上角「设置」填写，或切换到本地 Ollama。
