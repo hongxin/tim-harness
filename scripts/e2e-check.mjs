@@ -408,6 +408,23 @@ await page.click('.settings-tabs .rp-tab:has-text("数据")')
 await page.click('.seg-btn:has-text("标准")')
 await page.click('.modal.settings .modal-foot .btn-primary')
 
+// 13.7 余额显示：开启设置 → 模拟数据 → 芯片可见
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  // 模拟：直接注入余额数据（真实 fetchBalance 需要网络调 API）
+  rt.balanceInfo = { total: '88.20', currency: 'CNY', granted: '8.20', toppedUp: '80.00', isAvailable: true, fetchedAt: Date.now() }
+  rt.notify()
+})
+await page.waitForTimeout(300)
+const balChip = await page.textContent('.balance-chip').catch(() => null)
+if (!balChip || !balChip.includes('88.20')) throw new Error('余额芯片未显示: ' + balChip)
+console.log(`✓ 余额显示：芯片可见（${balChip.trim()}）`)
+await page.evaluate(() => {
+  const rt = window.__TIM_RUNTIME__
+  rt.balanceInfo = null
+  rt.notify()
+})
+
 // 14. 输入区
 await page.fill('.composer textarea', '测试输入')
 const val = await page.inputValue('.composer textarea')

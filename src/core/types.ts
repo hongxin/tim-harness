@@ -120,6 +120,8 @@ export interface AppSettings {
   costTier?: 'eco' | 'standard' | 'full'
   /** 子代理模型路由：指定 provider id（缺省跟随主模型；选便宜模型可显著压成本） */
   subagentProviderId?: string
+  /** DeepSeek 余额显示：'on' 时查询并展示账户余额（默认关闭） */
+  showBalance?: 'off' | 'on'
 }
 
 /* ---------------- 目标驱动 ---------------- */

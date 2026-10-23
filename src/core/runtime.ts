@@ -53,6 +53,20 @@ export interface PendingApproval {
   summary: string
 }
 
+export interface BalanceInfo {
+  /** 总余额（字符串，API 原样） */
+  total: string
+  /** 货币（如 CNY） */
+  currency: string
+  /** 赠送余额 */
+  granted: string
+  /** 充值余额 */
+  toppedUp: string
+  /** 账户是否可用 */
+  isAvailable: boolean
+  fetchedAt: number
+}
+
 export interface ContextInfo {
   /** 折叠前原始估算（压力指标：会话真实体量） */
   rawChars: number
@@ -80,6 +94,8 @@ export interface RuntimeSnapshot {
   composerPrefill: string | null
   /** 快照集合变更信号 */
   snapRev: number
+  /** DeepSeek 账户余额（设置开启时查询） */
+  balance: BalanceInfo | null
   settings: AppSettings | null
   lastError: string | null
   providerLabel: string | null
@@ -152,6 +168,7 @@ export class HarnessRuntime {
   private composerPrefill: string | null = null
   private snapRevCounter = 0
   private goalLoopRunning = false
+  private balanceInfo: BalanceInfo | null = null
 
   private listeners = new Set<() => void>()
   private snapshot: RuntimeSnapshot
@@ -197,6 +214,7 @@ export class HarnessRuntime {
       compacting: this.compactingFlag,
       composerPrefill: this.composerPrefill,
       snapRev: this.snapRevCounter,
+      balance: this.balanceInfo,
       settings: this.settings,
       lastError: this.lastError,
       providerLabel: provider ? `${provider.name} · ${modelLabel(provider.model)}` : null,
@@ -244,6 +262,7 @@ export class HarnessRuntime {
       if (!stored.toolApproval) stored.toolApproval = 'off'
       if (!stored.autoCompact) stored.autoCompact = 'on'
       if (!stored.costTier) stored.costTier = 'standard'
+      if (!stored.showBalance) stored.showBalance = 'off'
       this.settings = stored
       if (migrated) await this.deps.kv.set(K_SETTINGS, stored)
     } else {
@@ -254,6 +273,7 @@ export class HarnessRuntime {
         webSearch: null,
         toolApproval: 'off',
         autoCompact: 'on',
+        showBalance: 'off',
       }
     }
     await this.loadSessions()
@@ -317,6 +337,11 @@ export class HarnessRuntime {
     await this.deps.kv.set(K_SETTINGS, settings)
     this.lastError = null
     this.notify()
+    if (settings.showBalance === 'on') void this.fetchBalance()
+    else {
+      this.balanceInfo = null
+      this.notify()
+    }
   }
 
   /* ---------------- 会话管理 ---------------- */
@@ -763,6 +788,54 @@ export class HarnessRuntime {
     void this.persistSession()
     this.notify()
     return forked.id
+  }
+
+  /**
+   * 查询 DeepSeek 账户余额。仅对 baseURL 含 deepseek 的 provider 生效；
+   * 其他 provider 或网络/CORS 失败时静默返回 null。
+   */
+  async fetchBalance(): Promise<BalanceInfo | null> {
+    const provider = this.activeProvider()
+    if (!provider?.apiKey || !/deepseek/i.test(provider.baseURL)) {
+      this.balanceInfo = null
+      this.notify()
+      return null
+    }
+    try {
+      // 余额端点在根路径（不含 /v1）：https://api.deepseek.com/user/balance
+      const url = provider.baseURL.replace(/\/v1\/?$/, '') + '/user/balance'
+      const res = await this.deps.transport.request(url, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${provider.apiKey}` },
+      })
+      if (res.status !== 200) {
+        console.warn('[tim-harness] 余额查询失败', res.status)
+        this.balanceInfo = null
+        this.notify()
+        return null
+      }
+      const data = JSON.parse(await res.text())
+      const info = data?.balance_infos?.[0]
+      if (!info) {
+        this.balanceInfo = null
+        this.notify()
+        return null
+      }
+      this.balanceInfo = {
+        total: String(info.total_balance ?? '0'),
+        currency: String(info.currency ?? 'CNY'),
+        granted: String(info.granted_balance ?? '0'),
+        toppedUp: String(info.topped_up_balance ?? '0'),
+        isAvailable: data?.is_available ?? true,
+        fetchedAt: Date.now(),
+      }
+      this.notify()
+      return this.balanceInfo
+    } catch {
+      this.balanceInfo = null
+      this.notify()
+      return null
+    }
   }
 
   clearComposerPrefill(): void {

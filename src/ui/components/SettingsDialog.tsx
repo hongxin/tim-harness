@@ -205,6 +205,25 @@ export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; 
         {tab === 'data' && (
           <div className="settings-body">
             <div className="form-block">
+              <div className="form-block-title">DeepSeek 余额显示</div>
+              <p className="form-desc">
+                开启后，当使用 DeepSeek 系列模型时在输入区显示账户余额（点击可刷新，每轮对话后自动更新）。
+                需要有效的 API Key。余额查询走 DeepSeek /user/balance 端点（免费调用）。
+              </p>
+              <div className="seg">
+                {(['off', 'on'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`seg-btn ${(draft.showBalance ?? 'off') === v ? 'on' : ''}`}
+                    onClick={() => update((d) => { d.showBalance = v })}
+                  >
+                    {v === 'off' ? '关闭（默认）' : '开启'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-block">
               <div className="form-block-title">Token 成本档位</div>
               <p className="form-desc">
                 一组联动旋钮：上下文预算（折叠/压缩时机）、工具输出上限（read_file / grep / web_fetch）、

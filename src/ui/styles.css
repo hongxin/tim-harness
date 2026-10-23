@@ -261,6 +261,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 .ctx-chip.ctx-high { color: var(--red); border-color: rgba(248, 113, 113, 0.4); }
 .ctx-chip.ctx-masked { color: var(--amber); border-color: rgba(232, 179, 57, 0.4); }
 .ctx-chip.ctx-cached { color: var(--accent-text); border-color: var(--accent-dim); }
+.balance-chip { font-weight: 600; }
 
 /* 回到最新按钮 */
 .jump-latest {

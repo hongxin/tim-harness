@@ -1111,4 +1111,59 @@ const FINAL = () => [
   assert(tiny === false, '守卫修复：头部过小的会话仍拒绝压缩（省摘要调用）')
 }
 
+/* ---------------- 18. DeepSeek 余额查询 ---------------- */
+
+{
+  // mock：第一个请求是 chat，第二个是 GET /user/balance
+  const balanceBody = JSON.stringify({
+    is_available: true,
+    balance_infos: [{ currency: 'CNY', total_balance: '42.50', granted_balance: '2.50', topped_up_balance: '40.00' }],
+  })
+  let requestCount = 0
+  const t18 = new ScriptedTransport([
+    [sse({ choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }] })],
+  ])
+  // 扩展 transport：第二个请求（GET）返回余额 JSON
+  const origRequest = t18.request.bind(t18)
+  t18.request = async (url: string, init: any) => {
+    requestCount++
+    if (url.includes('/user/balance')) {
+      return {
+        status: 200,
+        headers: {},
+        text: async () => balanceBody,
+        bytes: async function* () { yield new TextEncoder().encode(balanceBody) },
+      }
+    }
+    return origRequest(url, init)
+  }
+  const rt18 = new HarnessRuntime({
+    kv: new MapKV(), fs: new TestFS(), transport: t18,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt18.boot()
+  // 非 DeepSeek → 不查询
+  await rt18.saveSettings({
+    providers: [{ id: 'mock', name: 'Mock', baseURL: 'http://localhost:9/v1', apiKey: 'k', model: 'm' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null, showBalance: 'on',
+  })
+  assert(rt18.getSnapshot().balance === null, '余额：非 DeepSeek provider 不查询')
+  // DeepSeek → 查询成功
+  await rt18.saveSettings({
+    providers: [{ id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: 'sk-test', model: 'deepseek-flash' }],
+    activeProviderId: 'deepseek', proxyTemplate: '', webSearch: null, showBalance: 'on',
+  })
+  await new Promise((r) => setTimeout(r, 50))
+  const bal = rt18.getSnapshot().balance
+  assert(bal !== null && bal.total === '42.50' && bal.currency === 'CNY', `余额：查询成功（${bal?.total} ${bal?.currency}）`)
+  assert(bal!.granted === '2.50' && bal!.toppedUp === '40.00', '余额：赠送/充值分项正确')
+  assert(bal!.isAvailable === true, '余额：账户可用')
+  // 关闭 → 清空
+  await rt18.saveSettings({
+    providers: [{ id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: 'sk-test', model: 'deepseek-flash' }],
+    activeProviderId: 'deepseek', proxyTemplate: '', webSearch: null, showBalance: 'off',
+  })
+  assert(rt18.getSnapshot().balance === null, '余额：关闭后清空')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

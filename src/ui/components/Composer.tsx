@@ -97,6 +97,16 @@ export function Composer({
       <div className="composer-meta">
         <span>{running ? '智能体运行中 · 工具调用与结果实时展示在上方' : '支持多轮工具调用 · 虚拟工作区 · JS 沙箱 · 子代理'}</span>
         <span className="meta-chips">
+          {snapshot.balance && (
+            <span
+              className={`ctx-chip balance-chip ${Number(snapshot.balance.total) < 5 ? 'ctx-high' : ''}`}
+              title={`DeepSeek 账户余额（${new Date(snapshot.balance.fetchedAt).toLocaleTimeString('zh-CN', { hour12: false })} 查询）\n赠送 ${snapshot.balance.granted} · 充值 ${snapshot.balance.toppedUp} ${snapshot.balance.currency}\n点击刷新`}
+              onClick={() => void runtime.fetchBalance()}
+              style={{ cursor: 'pointer' }}
+            >
+              💰 {snapshot.balance.total} {snapshot.balance.currency}
+            </span>
+          )}
           {ctx && ctx.sentChars > 12_000 && (
             <span
               className={`ctx-chip ${ctx.masked ? 'ctx-masked' : ctxPct > 85 ? 'ctx-high' : ''}`}
