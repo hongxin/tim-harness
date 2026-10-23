@@ -1,20 +1,17 @@
 /**
- * Cosmos 2D —— 会话的气泡力导向可视化（JetBot Cosmos 范式的增强版）。
+ * Cosmos 2D v3 —— 结构化星座布局（确定性空间语法取代力模拟）
  *
- * 直观性核心（从 JetBot 学到的）：
- * - 气泡上直接渲染内容文字（不需要点击才能看到）
- * - 力导向布局（新消息自动漂到合理位置，有机感）
- * - 2D 平移/缩放（零学习成本）
- * - 诞生脉冲 + 运行呼吸 + 弧线流动粒子
+ * 空间语法：
+ *   X 轴 = 时间（回合从左到右线性推进）
+ *   Y 轴 = 层级（用户上 → 助手中 → 工具方格下）
+ *   宽度 = 复杂度（工具多的回合更宽）
+ *   整体轮廓 = 会话模式签名（简单问答=低矮，深度研究=高塔）
  *
- * tim-harness 增强：
- * - 压缩核心（旧消息折叠为发光核心）
- * - 子代理卫星群
- * - 上下文预算环
- * - 19 种工具各自专属色相
+ * 三范式融合：
+ * - Minecraft：工具 = 方块网格，回合 = 建筑群
+ * - bbycroft：相机编排 + 步进叙事 + 焦点暗化
+ * - JetBot：隐藏复杂性 + 内容直接可见 + 诞生/呼吸动画
  */
-
-/* ---------------- 类型 ---------------- */
 
 export interface CosmosNode2D {
   id: string
@@ -26,20 +23,24 @@ export interface CosmosNode2D {
   durationMs?: number
   turnId: number
   birthTime: number
-  x: number; y: number; vx: number; vy: number
+  targetX: number; targetY: number
+  x: number; y: number
   radius: number
-  pinned: boolean
   hue: number
+  gridCol?: number; gridRow?: number
 }
 
 export interface CosmosEdge2D {
-  id: string
-  fromId: string
-  toId: string
-  type: 'flow' | 'spawn' | 'tool' | 'cross-turn'
+  id: string; fromId: string; toId: string
+  type: 'flow' | 'cross-turn' | 'grid'
 }
 
-/* ---------------- 色相映射 ---------------- */
+export interface TurnCluster {
+  turnId: number; centerX: number; centerY: number
+  width: number; height: number
+  nodeIds: string[]; summary: string; hue: number
+  toolCount: number; hasError: boolean; totalDuration: number
+}
 
 export const TOOL_HUE: Record<string, number> = {
   ls: 140, read_file: 200, write_file: 160, edit_file: 280,
@@ -48,172 +49,70 @@ export const TOOL_HUE: Record<string, number> = {
   goal_update: 120, snapshot_save: 170, snapshot_restore: 175,
   snapshot_list: 165, snapshot_diff: 168, snapshot_delete: 172,
 }
-
 export const KIND_HUE: Record<string, number> = {
   user: 30, assistant: 260, tool: 210, 'sub-agent': 300, core: 45, file: 100,
 }
 
-export function getNodeHue(node: CosmosNode2D): number {
-  if (node.kind === 'tool' && node.toolName) return TOOL_HUE[node.toolName] ?? 210
-  return KIND_HUE[node.kind] ?? 210
-}
-
-/* ---------------- 力导向引擎 ---------------- */
-
-const REPULSION = 6000
-const EDGE_SPRING = 0.006
-const EDGE_REST = 160
-const CENTER_PULL = 0.0008
-const DAMPING = 0.85
-const MAX_VEL = 12
-const COOLING = 0.05
-
-interface SimState {
-  nodes: Map<string, CosmosNode2D>
-  edges: CosmosEdge2D[]
-  cooled: boolean
-}
-
-export function tickSim(sim: SimState) {
-  if (sim.cooled || sim.nodes.size < 2) return
-  const arr = Array.from(sim.nodes.values())
-  let energy = 0
-
-  for (let i = 0; i < arr.length; i++) {
-    for (let j = i + 1; j < arr.length; j++) {
-      const a = arr[i], b = arr[j]
-      let dx = b.x - a.x, dy = b.y - a.y
-      let dist = Math.sqrt(dx * dx + dy * dy)
-      if (dist < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; dist = 1 }
-      const f = REPULSION / (dist * dist)
-      const fx = (dx / dist) * f, fy = (dy / dist) * f
-      if (!a.pinned) { a.vx -= fx; a.vy -= fy }
-      if (!b.pinned) { b.vx += fx; b.vy += fy }
-    }
-  }
-
-  for (const e of sim.edges) {
-    const a = sim.nodes.get(e.fromId), b = sim.nodes.get(e.toId)
-    if (!a || !b) continue
-    const dx = b.x - a.x, dy = b.y - a.y
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1
-    const rest = e.type === 'cross-turn' ? 280 : EDGE_REST
-    const f = EDGE_SPRING * (dist - rest)
-    const fx = (dx / dist) * f, fy = (dy / dist) * f
-    if (!a.pinned) { a.vx += fx; a.vy += fy }
-    if (!b.pinned) { b.vx -= fx; b.vy -= fy }
-  }
-
-  for (const s of arr) {
-    if (s.pinned) continue
-    s.vx -= s.x * CENTER_PULL
-    s.vy -= s.y * CENTER_PULL
-    s.vx *= DAMPING; s.vy *= DAMPING
-    const speed = Math.sqrt(s.vx * s.vx + s.vy * s.vy)
-    if (speed > MAX_VEL) { s.vx = (s.vx / speed) * MAX_VEL; s.vy = (s.vy / speed) * MAX_VEL }
-    s.x += s.vx; s.y += s.vy
-    energy += s.vx * s.vx + s.vy * s.vy
-  }
-  if (energy < COOLING) sim.cooled = true
-}
-
-/* ---------------- 消息 → 节点映射 ---------------- */
-
-const RADIUS_MAP: Record<string, number> = {
-  user: 32, assistant: 36, tool: 24, 'sub-agent': 42, core: 50, file: 18,
-}
+const TURN_GAP = 180
+const USER_Y = -70
+const ASST_Y = 0
+const TOOL_Y0 = 60
+const TOOL_CW = 44; const TOOL_RH = 38; const TOOL_COLS = 3
+const R: Record<string, number> = { user: 30, assistant: 26, tool: 16, 'sub-agent': 36, core: 40, file: 12 }
+const LERP = 0.1
 
 export function mapSessionToCosmos(
-  messages: Array<{ role: string; content?: string | null; tool_calls?: Array<{ id: string; name: string; arguments: string }>; tool_call_id?: string; name?: string; toolOk?: boolean; durationMs?: number; args?: string }>,
-  compactedFolded: number,
-): { nodes: CosmosNode2D[]; edges: CosmosEdge2D[] } {
+  msgs: Array<{ role: string; content?: string | null; tool_calls?: Array<{ id: string; name: string }>; name?: string; toolOk?: boolean; durationMs?: number }>,
+  folded: number,
+): { nodes: CosmosNode2D[]; edges: CosmosEdge2D[]; clusters: TurnCluster[] } {
   const nodes: CosmosNode2D[] = []
   const edges: CosmosEdge2D[] = []
+  const clusters: TurnCluster[] = []
   let turn = 0
-  let prevNodeId: string | null = null
 
-  // 压缩核心
-  if (compactedFolded > 0) {
-    const core: CosmosNode2D = {
-      id: 'core', kind: 'core', content: `⚡ ${compactedFolded} 条已压缩`,
-      turnId: 0, birthTime: performance.now(),
-      x: 0, y: 0, vx: 0, vy: 0, radius: RADIUS_MAP.core, pinned: false, hue: 45,
-    }
-    nodes.push(core)
-    prevNodeId = 'core'
+  if (folded > 0) {
+    nodes.push({ id: 'core', kind: 'core', content: `⚡ ${folded} 条已压缩`, turnId: -1, birthTime: performance.now(), targetX: -TURN_GAP, targetY: 0, x: -TURN_GAP, y: 0, radius: R.core, hue: KIND_HUE.core })
+    clusters.push({ turnId: -1, centerX: -TURN_GAP, centerY: 0, width: 100, height: 100, nodeIds: ['core'], summary: `压缩历史 (${folded})`, hue: 45, toolCount: 0, hasError: false, totalDuration: 0 })
   }
 
-  const visible = messages.slice(compactedFolded)
-  visible.forEach((msg, i) => {
+  msgs.slice(folded).forEach((m, i) => {
     const now = performance.now()
-
-    if (msg.role === 'user') {
+    if (m.role === 'user') {
       turn++
+      const x = turn * TURN_GAP
       const id = `u${i}`
-      const dist = 60 + Math.random() * 80
-      nodes.push({
-        id, kind: 'user', content: (msg.content ?? '').slice(0, 100),
-        turnId: turn, birthTime: now,
-        x: (Math.random() - 0.5) * dist * 2, y: (Math.random() - 0.5) * dist * 2, vx: 0, vy: 0,
-        radius: RADIUS_MAP.user, pinned: false, hue: 30,
-      })
-      if (prevNodeId) edges.push({ id: `e_${prevNodeId}_${id}`, fromId: prevNodeId, toId: id, type: prevNodeId === 'core' ? 'flow' : 'cross-turn' })
-      prevNodeId = id
-    } else if (msg.role === 'assistant') {
-      const id = `a${i}`
-      const last = nodes[nodes.length - 1]
-      const cx = last?.x ?? 0, cy = last?.y ?? 0
-      nodes.push({
-        id, kind: 'assistant', content: (msg.content ?? '').slice(0, 100) || `🔧 ${(msg.tool_calls?.length ?? 0)} 个工具`,
-        turnId: turn, birthTime: now,
-        x: cx + (Math.random() - 0.5) * 80, y: cy + (Math.random() - 0.5) * 80, vx: 0, vy: 0,
-        radius: RADIUS_MAP.assistant, pinned: false, hue: 260,
-      })
-      if (prevNodeId) edges.push({ id: `e_${prevNodeId}_${id}`, fromId: prevNodeId, toId: id, type: 'flow' })
-      prevNodeId = id
-
-      // 工具子节点
-      if (msg.tool_calls) {
-        msg.tool_calls.forEach((tc, j) => {
-          const tid = `t${i}_${j}`
-          nodes.push({
-            id: tid, kind: 'tool', content: tc.name,
-            toolName: tc.name, turnId: turn, birthTime: now,
-            x: (nodes[nodes.length - 1]?.x ?? 0) + (Math.random() - 0.5) * 60,
-            y: (nodes[nodes.length - 1]?.y ?? 0) + (Math.random() - 0.5) * 60,
-            vx: 0, vy: 0, radius: RADIUS_MAP.tool, pinned: false,
-            hue: TOOL_HUE[tc.name] ?? 210,
-          })
-          edges.push({ id: `e_${id}_${tid}`, fromId: id, toId: tid, type: 'tool' })
+      nodes.push({ id, kind: 'user', content: (m.content ?? '').slice(0, 120), turnId: turn, birthTime: now, targetX: x, targetY: USER_Y, x, y: USER_Y, radius: R.user, hue: KIND_HUE.user })
+      const prev = nodes[nodes.length - 2]
+      if (prev) edges.push({ id: `xt${i}`, fromId: prev.id, toId: id, type: 'cross-turn' })
+      clusters.push({ turnId: turn, centerX: x, centerY: 0, width: TURN_GAP * 0.7, height: 200, nodeIds: [id], summary: `T${turn}: ${(m.content ?? '').slice(0, 50)}`, hue: 30, toolCount: 0, hasError: false, totalDuration: 0 })
+    } else if (m.role === 'assistant') {
+      const id = `a${i}`; const x = turn * TURN_GAP
+      nodes.push({ id, kind: 'assistant', content: (m.content ?? '').slice(0, 120) || `${m.tool_calls?.length ?? 0} 工具`, turnId: turn, birthTime: now, targetX: x, targetY: ASST_Y, x, y: ASST_Y, radius: R.assistant, hue: KIND_HUE.assistant })
+      const un = nodes.find((n) => n.kind === 'user' && n.turnId === turn)
+      if (un) edges.push({ id: `f${i}`, fromId: un.id, toId: id, type: 'flow' })
+      clusters.find((c) => c.turnId === turn)?.nodeIds.push(id)
+      if (m.tool_calls) {
+        m.tool_calls.forEach((tc, j) => {
+          const tid = `t${i}_${j}`; const col = j % TOOL_COLS; const row = Math.floor(j / TOOL_COLS)
+          const gx = x + (col - 1) * TOOL_CW; const gy = TOOL_Y0 + row * TOOL_RH
+          nodes.push({ id: tid, kind: 'tool', content: tc.name, toolName: tc.name, turnId: turn, birthTime: now, targetX: gx, targetY: gy, x: gx, y: gy, radius: R.tool, hue: TOOL_HUE[tc.name] ?? 210, gridCol: col, gridRow: row })
+          edges.push({ id: `g${tid}`, fromId: id, toId: tid, type: 'grid' })
+          clusters.find((c) => c.turnId === turn)?.nodeIds.push(tid)
         })
+        const c = clusters.find((cl) => cl.turnId === turn)
+        if (c) { c.toolCount = m.tool_calls.length; c.width = Math.max(c.width, m.tool_calls.length * TOOL_CW * 0.5); c.height = TOOL_Y0 + Math.ceil(m.tool_calls.length / TOOL_COLS) * TOOL_RH + 20 }
       }
-    } else if (msg.role === 'tool') {
-      // 找到对应的工具调用节点，更新其状态
-      const toolNode = nodes.find((n) => n.kind === 'tool' && n.turnId === turn && n.content === msg.name)
-      if (toolNode) {
-        toolNode.isError = msg.toolOk === false
-        toolNode.durationMs = msg.durationMs
-        toolNode.content = `${msg.name} ${msg.toolOk === false ? '✗' : '✓'}`
-      } else {
-        const id = `tr${i}`
-        nodes.push({
-          id, kind: 'tool', content: msg.name ?? '',
-          toolName: msg.name, isError: msg.toolOk === false, durationMs: msg.durationMs,
-          turnId: turn, birthTime: now,
-          x: (nodes[nodes.length - 1]?.x ?? 0) + 40, y: (nodes[nodes.length - 1]?.y ?? 0) + 40,
-          vx: 0, vy: 0, radius: RADIUS_MAP.tool, pinned: false,
-          hue: TOOL_HUE[msg.name ?? ''] ?? 210,
-        })
-        if (prevNodeId) edges.push({ id: `e_${prevNodeId}_${id}`, fromId: prevNodeId, toId: id, type: 'tool' })
-        prevNodeId = id
+    } else if (m.role === 'tool') {
+      const tn = nodes.find((n) => n.kind === 'tool' && n.turnId === turn && n.toolName === m.name && n.durationMs == null)
+      if (tn) {
+        tn.isError = m.toolOk === false; tn.durationMs = m.durationMs; tn.content = `${m.name} ${m.toolOk === false ? '✗' : '✓'}`
+        const c = clusters.find((cl) => cl.turnId === turn)
+        if (c) { if (m.toolOk === false) c.hasError = true; c.totalDuration += m.durationMs ?? 0 }
       }
     }
   })
-
-  return { nodes, edges }
+  return { nodes, edges, clusters }
 }
-
-/* ---------------- Canvas 2D 渲染器 ---------------- */
 
 interface Star { x: number; y: number; size: number; layer: number; alpha: number; twinkle: boolean }
 interface Particle { edgeId: string; t: number }
@@ -221,398 +120,248 @@ interface Particle { edgeId: string; t: number }
 export class CosmosCanvas2D {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
-  private width = 0; private height = 0; private dpr = 1
+  private w = 0; private h = 0; private dpr = 1
   private animId = 0
-  private sim: SimState = { nodes: new Map(), edges: [], cooled: false }
+  private nodes: CosmosNode2D[] = []
+  private edges: CosmosEdge2D[] = []
+  private clusters: TurnCluster[] = []
+  private nm = new Map<string, CosmosNode2D>()
   private stars: Star[] = []
   private particles: Particle[] = []
-  private startTime = performance.now()
-  private zoom = 1
-  private offsetX = 0; private offsetY = 0
+  private t0 = performance.now()
+  private zoom = 1; private ox = 0; private oy = 0
   private hoverId: string | null = null
   private selectedId: string | null = null
-  private resizeObserver: ResizeObserver
-  private onNodeSelect: ((node: CosmosNode2D | null) => void) | null = null
+  private focusTurn: number | null = null
+  private ro: ResizeObserver
+  private onSelect: ((n: CosmosNode2D | null) => void) | null = null
+  private onCaption: ((c: string | null) => void) | null = null
+  private cam: { t: number; d: number; fx: number; fy: number; fz: number; tx: number; ty: number; tz: number } | null = null
+  private panning = false
+  private panS = { x: 0, y: 0 }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')!
-    this.resizeObserver = new ResizeObserver(() => this.resize())
-    this.resizeObserver.observe(canvas.parentElement || canvas)
-    this.resize()
-    this.initStars()
-    this.loop()
-    this.bindEvents()
+    this.ro = new ResizeObserver(() => this.resize())
+    this.ro.observe(canvas.parentElement || canvas)
+    this.resize(); this.initStars(); this.loop(); this.bind()
   }
+  destroy() { cancelAnimationFrame(this.animId); this.ro.disconnect(); this.unbind() }
 
-  destroy() {
-    cancelAnimationFrame(this.animId)
-    this.resizeObserver.disconnect()
-    this.unbindEvents()
-  }
+  setOnNodeSelect(cb: (n: CosmosNode2D | null) => void) { this.onSelect = cb }
+  setOnCaptionUpdate(cb: (c: string | null) => void) { this.onCaption = cb }
 
-  setOnNodeSelect(cb: (node: CosmosNode2D | null) => void) { this.onNodeSelect = cb }
-
-  setNodes(nodes: CosmosNode2D[], edges: CosmosEdge2D[]) {
+  setNodes(nodes: CosmosNode2D[], edges: CosmosEdge2D[], clusters: TurnCluster[]) {
     const newIds = new Set(nodes.map((n) => n.id))
-    for (const id of this.sim.nodes.keys()) {
-      if (!newIds.has(id)) this.sim.nodes.delete(id)
-    }
+    this.nodes = this.nodes.filter((n) => newIds.has(n.id))
     for (const n of nodes) {
-      const existing = this.sim.nodes.get(n.id)
-      if (existing) {
-        existing.content = n.content
-        existing.isError = n.isError
-        existing.isRunning = n.isRunning
-        existing.durationMs = n.durationMs
-        existing.toolName = n.toolName
-        existing.hue = n.hue
+      const old = this.nm.get(n.id)
+      if (old) {
+        old.content = n.content; old.isError = n.isError; old.durationMs = n.durationMs
+        old.hue = n.hue; old.targetX = n.targetX; old.targetY = n.targetY; old.toolName = n.toolName
       } else {
-        this.sim.nodes.set(n.id, { ...n })
-        this.sim.cooled = false
+        n.y = n.targetY - 30
+        this.nodes.push(n)
       }
     }
-    this.sim.edges = edges
-    this.sim.cooled = false
-    // 同步粒子
-    const edgeIds = new Set(edges.map((e) => e.id))
-    this.particles = this.particles.filter((p) => edgeIds.has(p.edgeId))
-    for (const e of edges) {
-      if (!this.particles.some((p) => p.edgeId === e.id)) {
-        for (let i = 0; i < 3; i++) this.particles.push({ edgeId: e.id, t: i / 3 })
-      }
-    }
-    this.autoFit()
+    this.nm = new Map(this.nodes.map((n) => [n.id, n]))
+    this.edges = edges; this.clusters = clusters
+    const eids = new Set(edges.map((e) => e.id))
+    this.particles = this.particles.filter((p) => eids.has(p.edgeId))
+    for (const e of edges) if (!this.particles.some((p) => p.edgeId === e.id)) this.particles.push({ edgeId: e.id, t: Math.random() })
   }
 
+  flyToTurn(tid: number) {
+    const c = this.clusters.find((cl) => cl.turnId === tid); if (!c) return
+    this.focusTurn = tid
+    this.animateCam(c.centerX, 0, Math.max(1.5, 250 / Math.max(c.width, 80)))
+    this.onCaption?.(c.summary)
+  }
+  resetView() { this.focusTurn = null; this.onCaption?.(null); this.autoFit() }
+  getTourSteps() { return this.clusters.filter((c) => c.turnId >= 0).sort((a, b) => a.turnId - b.turnId) }
+
+  private animateCam(tx: number, ty: number, tz: number) {
+    this.cam = { t: 0, d: 600, fx: this.ox, fy: this.oy, fz: this.zoom, tx: -tx, ty: -ty, tz }
+  }
   private autoFit() {
-    if (this.sim.nodes.size === 0) return
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-    for (const s of this.sim.nodes.values()) {
-      minX = Math.min(minX, s.x - s.radius)
-      maxX = Math.max(maxX, s.x + s.radius)
-      minY = Math.min(minY, s.y - s.radius)
-      maxY = Math.max(maxY, s.y + s.radius)
-    }
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
-    const rangeX = maxX - minX + 200, rangeY = maxY - minY + 200
-    this.zoom = Math.min(1.5, Math.min(this.width / rangeX, this.height / rangeY))
-    this.offsetX = -cx; this.offsetY = -cy
+    if (!this.nodes.length) return
+    let x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity
+    for (const n of this.nodes) { x1 = Math.min(x1, n.x - n.radius); x2 = Math.max(x2, n.x + n.radius); y1 = Math.min(y1, n.y - n.radius); y2 = Math.max(y2, n.y + n.radius) }
+    this.zoom = Math.min(1.2, Math.min(this.w / (x2 - x1 + 200), this.h / (y2 - y1 + 200)))
+    this.ox = -(x1 + x2) / 2; this.oy = -(y1 + y2) / 2
   }
+  private w2s(wx: number, wy: number): [number, number] { return [(wx + this.ox) * this.zoom + this.w / 2, (wy + this.oy) * this.zoom + this.h / 2] }
+  private s2w(sx: number, sy: number): [number, number] { return [(sx - this.w / 2) / this.zoom - this.ox, (sy - this.h / 2) / this.zoom - this.oy] }
 
-  resetView() { this.autoFit() }
-
-  /* 坐标变换 */
-  private w2s(wx: number, wy: number): [number, number] {
-    return [(wx + this.offsetX) * this.zoom + this.width / 2, (wy + this.offsetY) * this.zoom + this.height / 2]
-  }
-  private s2w(sx: number, sy: number): [number, number] {
-    return [(sx - this.width / 2) / this.zoom - this.offsetX, (sy - this.height / 2) / this.zoom - this.offsetY]
-  }
-
-  /* 事件 */
-  private isPanning = false
-  private panStart = { x: 0, y: 0 }
-  private dragNode: string | null = null
-
-  private bindEvents() {
+  private bind() {
     this.canvas.addEventListener('wheel', this.onWheel)
-    this.canvas.addEventListener('pointerdown', this.onPointerDown)
-    this.canvas.addEventListener('pointermove', this.onPointerMove)
-    this.canvas.addEventListener('pointerup', this.onPointerUp)
-    this.canvas.addEventListener('pointerleave', this.onPointerUp)
+    this.canvas.addEventListener('pointerdown', this.onPD)
+    this.canvas.addEventListener('pointermove', this.onPM)
+    this.canvas.addEventListener('pointerup', this.onPU)
+    this.canvas.addEventListener('pointerleave', this.onPU)
   }
-  private unbindEvents() {
+  private unbind() {
     this.canvas.removeEventListener('wheel', this.onWheel)
-    this.canvas.removeEventListener('pointerdown', this.onPointerDown)
-    this.canvas.removeEventListener('pointermove', this.onPointerMove)
-    this.canvas.removeEventListener('pointerup', this.onPointerUp)
-    this.canvas.removeEventListener('pointerleave', this.onPointerUp)
+    this.canvas.removeEventListener('pointerdown', this.onPD)
+    this.canvas.removeEventListener('pointermove', this.onPM)
+    this.canvas.removeEventListener('pointerup', this.onPU)
+    this.canvas.removeEventListener('pointerleave', this.onPU)
   }
-
-  private onWheel = (e: WheelEvent) => {
-    e.preventDefault()
-    const factor = e.deltaY > 0 ? 0.9 : 1.1
-    this.zoom = Math.max(0.1, Math.min(5, this.zoom * factor))
+  private onWheel = (e: WheelEvent) => { e.preventDefault(); this.cam = null; this.zoom = Math.max(0.1, Math.min(5, this.zoom * (e.deltaY > 0 ? 0.9 : 1.1))) }
+  private onPD = (e: PointerEvent) => {
+    const r = this.canvas.getBoundingClientRect()
+    const [wx, wy] = this.s2w(e.clientX - r.left, e.clientY - r.top)
+    for (let i = this.nodes.length - 1; i >= 0; i--) {
+      const n = this.nodes[i]; const dx = wx - n.x, dy = wy - n.y
+      if (dx * dx + dy * dy <= n.radius * n.radius) { this.selectedId = n.id; this.onSelect?.(n); return }
+    }
+    for (const c of this.clusters) {
+      if (Math.abs(wx - c.centerX) < c.width / 2 && Math.abs(wy) < c.height / 2) { this.flyToTurn(c.turnId); return }
+    }
+    this.selectedId = null; this.focusTurn = null; this.onSelect?.(null); this.onCaption?.(null)
+    this.panning = true; this.panS = { x: e.clientX, y: e.clientY }
   }
-
-  private onPointerDown = (e: PointerEvent) => {
-    const rect = this.canvas.getBoundingClientRect()
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top
-    const [wx, wy] = this.s2w(sx, sy)
-    // 命中检测（从后往前）
-    const arr = Array.from(this.sim.nodes.values())
-    for (let i = arr.length - 1; i >= 0; i--) {
-      const n = arr[i]
-      const dx = wx - n.x, dy = wy - n.y
-      if (dx * dx + dy * dy <= n.radius * n.radius) {
-        this.selectedId = n.id
-        this.dragNode = n.id
-        n.pinned = true
-        this.onNodeSelect?.(n)
-        return
-      }
+  private onPM = (e: PointerEvent) => {
+    const r = this.canvas.getBoundingClientRect()
+    if (this.panning) {
+      this.cam = null
+      this.ox += (e.clientX - this.panS.x) / this.zoom; this.oy += (e.clientY - this.panS.y) / this.zoom
+      this.panS = { x: e.clientX, y: e.clientY }; return
     }
-    // 空白 → 平移
-    this.selectedId = null
-    this.onNodeSelect?.(null)
-    this.isPanning = true
-    this.panStart = { x: e.clientX, y: e.clientY }
-  }
-
-  private onPointerMove = (e: PointerEvent) => {
-    const rect = this.canvas.getBoundingClientRect()
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top
-    if (this.dragNode) {
-      const [wx, wy] = this.s2w(sx, sy)
-      const n = this.sim.nodes.get(this.dragNode)
-      if (n) { n.x = wx; n.y = wy; n.vx = 0; n.vy = 0; this.sim.cooled = false }
-      return
-    }
-    if (this.isPanning) {
-      const dx = e.clientX - this.panStart.x
-      const dy = e.clientY - this.panStart.y
-      this.offsetX += dx / this.zoom
-      this.offsetY += dy / this.zoom
-      this.panStart = { x: e.clientX, y: e.clientY }
-      return
-    }
-    // hover
-    const [wx, wy] = this.s2w(sx, sy)
+    const [wx, wy] = this.s2w(e.clientX - r.left, e.clientY - r.top)
     this.hoverId = null
-    for (const n of this.sim.nodes.values()) {
-      const dx = wx - n.x, dy = wy - n.y
-      if (dx * dx + dy * dy <= n.radius * n.radius) { this.hoverId = n.id; break }
-    }
+    for (const n of this.nodes) { const dx = wx - n.x, dy = wy - n.y; if (dx * dx + dy * dy <= n.radius * n.radius) { this.hoverId = n.id; break } }
     this.canvas.style.cursor = this.hoverId ? 'pointer' : 'grab'
   }
+  private onPU = () => { this.panning = false }
 
-  private onPointerUp = () => {
-    if (this.dragNode) {
-      const n = this.sim.nodes.get(this.dragNode)
-      if (n) n.pinned = false
-      this.dragNode = null
-    }
-    this.isPanning = false
-  }
-
-  /* 渲染 */
   private resize() {
-    const parent = this.canvas.parentElement
-    if (!parent) return
+    const p = this.canvas.parentElement; if (!p) return
     this.dpr = window.devicePixelRatio || 1
-    this.width = parent.clientWidth
-    this.height = parent.clientHeight
-    this.canvas.width = this.width * this.dpr
-    this.canvas.height = this.height * this.dpr
-    this.canvas.style.width = `${this.width}px`
-    this.canvas.style.height = `${this.height}px`
+    this.w = p.clientWidth; this.h = p.clientHeight
+    this.canvas.width = this.w * this.dpr; this.canvas.height = this.h * this.dpr
+    this.canvas.style.width = `${this.w}px`; this.canvas.style.height = `${this.h}px`
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
   }
-
   private initStars() {
     this.stars = []
-    for (let i = 0; i < 300; i++) {
-      this.stars.push({
-        x: Math.random() * 4000 - 2000, y: Math.random() * 4000 - 2000,
-        size: Math.random() * 1.8 + 0.3, layer: Math.floor(Math.random() * 3),
-        alpha: Math.random() * 0.6 + 0.2, twinkle: Math.random() < 0.1,
-      })
-    }
+    for (let i = 0; i < 200; i++) this.stars.push({ x: Math.random() * 3000 - 1500, y: Math.random() * 2000 - 1000, size: Math.random() * 1.5 + 0.3, layer: Math.floor(Math.random() * 3), alpha: Math.random() * 0.5 + 0.15, twinkle: Math.random() < 0.1 })
   }
 
   private loop = () => {
-    tickSim(this.sim)
+    if (this.cam) {
+      const a = this.cam; a.t += 16 / a.d
+      if (a.t >= 1) { this.ox = a.tx; this.oy = a.ty; this.zoom = a.tz; this.cam = null }
+      else { const e = a.t < 0.5 ? 4 * a.t ** 3 : 1 - (-2 * a.t + 2) ** 3 / 2; this.ox = a.fx + (a.tx - a.fx) * e; this.oy = a.fy + (a.ty - a.fy) * e; this.zoom = a.fz + (a.tz - a.fz) * e }
+    }
+    for (const n of this.nodes) { n.x += (n.targetX - n.x) * LERP; n.y += (n.targetY - n.y) * LERP }
     this.render()
     this.animId = requestAnimationFrame(this.loop)
   }
 
   private render() {
-    const ctx = this.ctx, w = this.width, h = this.height
-    const now = performance.now()
-    const time = (now - this.startTime) / 1000
-
-    // 背景（径向渐变）
-    const bg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7)
-    bg.addColorStop(0, 'hsl(230, 20%, 8%)')
-    bg.addColorStop(1, 'hsl(230, 15%, 3%)')
-    ctx.fillStyle = bg
-    ctx.fillRect(0, 0, w, h)
-
-    this.renderStars(ctx, time)
-    this.renderEdges(ctx)
-    this.renderNodes(ctx, now)
-  }
-
-  private renderStars(ctx: CanvasRenderingContext2D, time: number) {
-    const parallax = [0.1, 0.3, 0.6]
-    for (const star of this.stars) {
-      const pf = parallax[star.layer]
-      const sx = (star.x + this.offsetX * pf) * this.zoom + this.width / 2
-      const sy = (star.y + this.offsetY * pf) * this.zoom + this.height / 2
-      if (sx < -5 || sx > this.width + 5 || sy < -5 || sy > this.height + 5) continue
-      let alpha = star.alpha
-      if (star.twinkle) alpha *= 0.5 + 0.5 * Math.sin(time * 2 + star.x * 0.01)
-      ctx.beginPath()
-      ctx.arc(sx, sy, star.size * this.zoom, 0, Math.PI * 2)
-      ctx.fillStyle = `rgba(220,230,255,${alpha})`
-      ctx.fill()
+    const ctx = this.ctx; const now = performance.now(); const time = (now - this.t0) / 1000
+    const bg = ctx.createRadialGradient(this.w / 2, this.h / 2, 0, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.7)
+    bg.addColorStop(0, 'hsl(230,20%,8%)'); bg.addColorStop(1, 'hsl(230,15%,3%)')
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, this.w, this.h)
+    // 星尘
+    const px = [0.1, 0.3, 0.6]
+    for (const s of this.stars) {
+      const sx = (s.x + this.ox * px[s.layer]) * this.zoom + this.w / 2
+      const sy = (s.y + this.oy * px[s.layer]) * this.zoom + this.h / 2
+      if (sx < -5 || sx > this.w + 5 || sy < -5 || sy > this.h + 5) continue
+      ctx.beginPath(); ctx.arc(sx, sy, s.size * this.zoom, 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(220,230,255,${s.twinkle ? s.alpha * (0.5 + 0.5 * Math.sin(time * 2 + s.x * 0.01)) : s.alpha})`; ctx.fill()
     }
-  }
-
-  private renderEdges(ctx: CanvasRenderingContext2D) {
-    for (const edge of this.sim.edges) {
-      const a = this.sim.nodes.get(edge.fromId)
-      const b = this.sim.nodes.get(edge.toId)
-      if (!a || !b) continue
-      const [x1, y1] = this.w2s(a.x, a.y)
-      const [x2, y2] = this.w2s(b.x, b.y)
-      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
-      const dx = x2 - x1, dy = y2 - y1
-      const len = Math.sqrt(dx * dx + dy * dy) || 1
-      const cx = mx + (-dy / len) * len * 0.15
-      const cy = my + (dx / len) * len * 0.15
-
-      ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.quadraticCurveTo(cx, cy, x2, y2)
-
-      if (edge.type === 'tool') { ctx.strokeStyle = 'hsla(200,50%,50%,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]) }
-      else if (edge.type === 'cross-turn') { ctx.strokeStyle = 'hsla(200,40%,45%,0.12)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]) }
-      else { ctx.strokeStyle = 'hsla(200,60%,50%,0.3)'; ctx.lineWidth = 1.5; ctx.setLineDash([]) }
+    // 时间轴基线
+    if (this.nodes.length > 1) {
+      const [x1] = this.w2s(this.nodes[0].x, 0); const [x2] = this.w2s(this.nodes[this.nodes.length - 1].x, 0)
+      ctx.beginPath(); ctx.moveTo(x1 - 20 * this.zoom, this.h / 2); ctx.lineTo(x2 + 20 * this.zoom, this.h / 2)
+      ctx.strokeStyle = 'hsla(210,30%,30%,0.1)'; ctx.lineWidth = 1; ctx.setLineDash([2, 8]); ctx.stroke(); ctx.setLineDash([])
+    }
+    // 回合建筑轮廓
+    for (const c of this.clusters) {
+      const [sx] = this.w2s(c.centerX, 0); const w = c.width * this.zoom; const h = c.height * this.zoom
+      if (sx + w / 2 < 0 || sx - w / 2 > this.w) continue
+      const isF = this.focusTurn === null || this.focusTurn === c.turnId
+      ctx.beginPath(); ctx.roundRect(sx - w / 2, this.h / 2 - h / 2 + this.oy * this.zoom * 0.3, w, h, 6)
+      ctx.strokeStyle = `hsla(${c.hue},50%,50%,${isF ? 0.06 : 0.015})`; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([])
+      if (this.focusTurn === c.turnId) { ctx.fillStyle = `hsla(${c.hue},40%,30%,0.03)`; ctx.fill() }
+      if (this.zoom > 0.5 && c.turnId >= 0) {
+        ctx.font = `${10 * this.zoom}px monospace`; ctx.textAlign = 'center'; ctx.fillStyle = `hsla(${c.hue},30%,60%,${isF ? 0.4 : 0.1})`
+        ctx.fillText(`T${c.turnId + 1}`, sx, this.h / 2 - h / 2 + this.oy * this.zoom * 0.3 - 8)
+      }
+    }
+    // 连接
+    for (const e of this.edges) {
+      const a = this.nm.get(e.fromId); const b = this.nm.get(e.toId); if (!a || !b) continue
+      const isF = this.focusTurn === null || a.turnId === this.focusTurn || b.turnId === this.focusTurn; if (!isF) continue
+      const [x1, y1] = this.w2s(a.x, a.y); const [x2, y2] = this.w2s(b.x, b.y)
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2)
+      if (e.type === 'grid') { ctx.strokeStyle = `hsla(${a.hue},40%,50%,0.08)`; ctx.lineWidth = 1 }
+      else if (e.type === 'cross-turn') { ctx.strokeStyle = 'hsla(200,40%,45%,0.06)'; ctx.lineWidth = 1 }
+      else { ctx.strokeStyle = 'hsla(200,60%,50%,0.15)'; ctx.lineWidth = 1.5 }
       ctx.stroke()
-      ctx.setLineDash([])
-
-      // 流动粒子
-      const eps = this.particles.filter((p) => p.edgeId === edge.id)
-      const speed = edge.type === 'cross-turn' ? 0.002 : 0.004
-      for (const p of eps) {
-        p.t = (p.t + speed) % 1
-        const u = 1 - p.t
-        const px = u * u * x1 + 2 * u * p.t * cx + p.t * p.t * x2
-        const py = u * u * y1 + 2 * u * p.t * cy + p.t * p.t * y2
-        const hue = edge.type === 'tool' ? 200 : 45
-        ctx.beginPath()
-        ctx.arc(px, py, 2, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${hue},80%,70%,0.7)`
-        ctx.fill()
-      }
     }
-  }
-
-  private renderNodes(ctx: CanvasRenderingContext2D, now: number) {
-    const fontSize = Math.max(9, 11 * this.zoom)
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-
-    for (const node of this.sim.nodes.values()) {
-      const [sx, sy] = this.w2s(node.x, node.y)
-      const r = node.radius * this.zoom
-      if (r < 2) continue
-      if (sx < -r * 3 || sx > this.width + r * 3 || sy < -r * 3 || sy > this.height + r * 3) continue
-
-      const isHover = this.hoverId === node.id
-      const isSelected = this.selectedId === node.id
-      const age = now - node.birthTime
-      const birth = Math.min(1, age / 1200)
-      const eased = 1 - Math.pow(1 - birth, 3)
-      const er = r * eased
+    // 流动粒子
+    for (const p of this.particles) {
+      const e = this.edges.find((ed) => ed.id === p.edgeId); if (!e || e.type === 'grid') continue
+      const a = this.nm.get(e.fromId); const b = this.nm.get(e.toId); if (!a || !b) continue
+      const isF = this.focusTurn === null || a.turnId === this.focusTurn; if (!isF) continue
+      p.t = (p.t + 0.005) % 1
+      const [x1, y1] = this.w2s(a.x, a.y); const [x2, y2] = this.w2s(b.x, b.y)
+      const px2 = x1 + (x2 - x1) * p.t; const py2 = y1 + (y2 - y1) * p.t
+      ctx.beginPath(); ctx.arc(px2, py2, 1.5, 0, Math.PI * 2); ctx.fillStyle = 'hsla(45,80%,70%,0.4)'; ctx.fill()
+    }
+    // 节点
+    const fs = Math.max(9, 11 * this.zoom); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    for (const n of this.nodes) {
+      const [sx, sy] = this.w2s(n.x, n.y); const r = n.radius * this.zoom
+      if (r < 2 || sx < -r * 3 || sx > this.w + r * 3 || sy < -r * 3 || sy > this.h + r * 3) continue
+      const isF = this.focusTurn === null || n.turnId === this.focusTurn
+      const alpha = isF ? 1 : 0.1; const isH = this.hoverId === n.id; const isS = this.selectedId === n.id
+      const age = now - n.birthTime; const birth = Math.min(1, age / 800); const eased = 1 - (1 - birth) ** 3; const er = r * eased
       if (er < 0.5) continue
-
-      const hue = node.hue
-      const light = node.isError ? 40 : node.kind === 'core' ? 55 : 50
-      const sat = node.isError ? 90 : 70
-
-      // 外发光
-      const glowR = er * (isHover ? 3 : 2.2)
-      const glow = ctx.createRadialGradient(sx, sy, er * 0.3, sx, sy, glowR)
-      glow.addColorStop(0, `hsla(${hue},${sat}%,60%,${isHover ? 0.45 : 0.25})`)
-      glow.addColorStop(1, 'transparent')
-      ctx.beginPath()
-      ctx.arc(sx, sy, glowR, 0, Math.PI * 2)
-      ctx.fillStyle = glow
-      ctx.fill()
-
-      // 诞生脉冲
-      if (birth < 1) {
-        const pulse = Math.sin(birth * Math.PI * 2) * 0.3
-        if (pulse > 0) {
-          ctx.beginPath()
-          ctx.arc(sx, sy, er * (1 + birth * 0.8), 0, Math.PI * 2)
-          ctx.strokeStyle = `hsla(${hue},80%,70%,${pulse})`
-          ctx.lineWidth = 2
-          ctx.stroke()
+      const { hue } = n; const sat = n.isError ? 90 : 70; const li = n.isError ? 40 : n.kind === 'core' ? 55 : 50
+      ctx.globalAlpha = alpha
+      // glow
+      const gr = er * (isH ? 3 : 2)
+      const g = ctx.createRadialGradient(sx, sy, er * 0.3, sx, sy, gr)
+      g.addColorStop(0, `hsla(${hue},${sat}%,60%,${(isH ? 0.4 : 0.2) * alpha})`); g.addColorStop(1, 'transparent')
+      ctx.beginPath(); ctx.arc(sx, sy, gr, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill()
+      // birth pulse
+      if (birth < 1 && isF) { const pl = Math.sin(birth * Math.PI) * 0.4; if (pl > 0) { ctx.beginPath(); ctx.arc(sx, sy, er * (1 + birth), 0, Math.PI * 2); ctx.strokeStyle = `hsla(${hue},80%,70%,${pl * alpha})`; ctx.lineWidth = 2; ctx.stroke() } }
+      // body
+      if (n.kind === 'tool') {
+        const hf = er * 0.85
+        const fg = ctx.createLinearGradient(sx - hf, sy - hf, sx + hf, sy + hf)
+        fg.addColorStop(0, `hsla(${hue},${sat}%,${li + 15}%,0.9)`); fg.addColorStop(1, `hsla(${hue},${sat}%,${li - 10}%,0.7)`)
+        ctx.fillStyle = fg; ctx.beginPath(); ctx.roundRect(sx - hf, sy - hf, hf * 2, hf * 2, 2); ctx.fill()
+        ctx.strokeStyle = `hsla(${hue},${sat}%,${li + 20}%,0.4)`; ctx.lineWidth = 1; ctx.stroke()
+      } else {
+        const bg2 = ctx.createRadialGradient(sx - er * 0.3, sy - er * 0.3, 0, sx, sy, er)
+        bg2.addColorStop(0, `hsla(${hue},${sat}%,${li + 15}%,0.9)`); bg2.addColorStop(1, `hsla(${hue},${sat}%,${li - 10}%,0.7)`)
+        ctx.beginPath(); ctx.arc(sx, sy, er, 0, Math.PI * 2); ctx.fillStyle = bg2; ctx.fill()
+      }
+      if (isS) { ctx.beginPath(); ctx.arc(sx, sy, er + 3, 0, Math.PI * 2); ctx.strokeStyle = `hsla(${hue},90%,70%,0.8)`; ctx.lineWidth = 2; ctx.stroke() }
+      if (n.isError) { ctx.fillStyle = `hsla(0,90%,60%,${0.9 * alpha})`; ctx.font = `bold ${Math.max(9, er * 0.5)}px sans-serif`; ctx.fillText('✗', sx + er * 0.5, sy - er * 0.5) }
+      // text
+      if (this.zoom > 0.35 && isF) {
+        if (n.kind === 'tool') {
+          ctx.font = `bold ${Math.max(7, fs * 0.7)}px monospace`; ctx.fillStyle = `hsla(${hue},60%,80%,0.9)`
+          const tn = n.toolName ?? n.content; ctx.fillText(tn.length > 8 ? tn.slice(0, 7) + '…' : tn, sx, sy)
+        } else {
+          const mc = Math.floor(er * 2 / (fs * 0.55)); let t = n.content
+          if (t.length > mc) t = t.slice(0, mc) + '…'
+          if (t) { ctx.font = `${fs}px -apple-system, sans-serif`; ctx.fillStyle = `hsla(${hue},30%,88%,0.9)`; ctx.fillText(t, sx, sy + er * 0.4) }
         }
       }
-
-      // 运行呼吸
-      if (node.isRunning) {
-        const breath = 1 + 0.08 * Math.sin(now / 500)
-        ctx.beginPath()
-        ctx.arc(sx, sy, er * breath * 1.3, 0, Math.PI * 2)
-        ctx.strokeStyle = `hsla(${hue},80%,60%,0.2)`
-        ctx.lineWidth = 1.5
-        ctx.stroke()
+      if (n.durationMs != null && n.durationMs > 500 && this.zoom > 0.5 && isF) {
+        const d = n.durationMs < 1000 ? `${n.durationMs}ms` : `${(n.durationMs / 1000).toFixed(1)}s`
+        ctx.font = `${Math.max(7, fs * 0.7)}px monospace`; ctx.fillStyle = 'rgba(200,200,200,0.3)'; ctx.fillText(d, sx, sy - er - 8)
       }
-
-      // 主体气泡
-      const bodyGrad = ctx.createRadialGradient(sx - er * 0.3, sy - er * 0.3, 0, sx, sy, er)
-      bodyGrad.addColorStop(0, `hsla(${hue},${sat}%,${light + 15}%,0.9)`)
-      bodyGrad.addColorStop(1, `hsla(${hue},${sat}%,${light - 10}%,0.7)`)
-      ctx.beginPath()
-      ctx.arc(sx, sy, er, 0, Math.PI * 2)
-      ctx.fillStyle = bodyGrad
-      ctx.fill()
-
-      // 选中环
-      if (isSelected) {
-        ctx.beginPath()
-        ctx.arc(sx, sy, er + 3, 0, Math.PI * 2)
-        ctx.strokeStyle = `hsla(${hue},90%,70%,0.8)`
-        ctx.lineWidth = 2
-        ctx.stroke()
-      }
-
-      // 错误标记
-      if (node.isError) {
-        ctx.fillStyle = 'hsla(0,90%,60%,0.9)'
-        ctx.font = `bold ${Math.max(10, er * 0.5)}px sans-serif`
-        ctx.fillText('✗', sx + er * 0.5, sy - er * 0.5)
-      }
-
-      // 内容文字（核心直观性来源：直接可读，无需点击）
-      if (this.zoom > 0.35) {
-        const maxChars = Math.floor(er * 1.8 / (fontSize * 0.55))
-        let text = node.content
-        if (text.length > maxChars) text = text.slice(0, maxChars) + '…'
-        if (text) {
-          ctx.font = `${fontSize}px -apple-system, sans-serif`
-          // 文字背景（提高可读性）
-          const textW = ctx.measureText(text).width
-          ctx.fillStyle = 'rgba(0,0,0,0.3)'
-          if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(sx - textW / 2 - 4, sy + er * 0.3, textW + 8, fontSize + 6, 4)
-            ctx.fill()
-          }
-          // 文字
-          ctx.fillStyle = `hsla(${hue},30%,90%,0.9)`
-          ctx.fillText(text, sx, sy + er * 0.3 + (fontSize + 6) / 2)
-        }
-        // 工具名（工具节点在气泡中心显示）
-        if (node.kind === 'tool' && this.zoom > 0.6) {
-          ctx.font = `bold ${Math.max(8, fontSize * 0.8)}px monospace`
-          ctx.fillStyle = `hsla(${hue},60%,80%,0.9)`
-          ctx.fillText(node.toolName ?? node.content, sx, sy - er * 0.1)
-        }
-      }
-
-      // 耗时标签
-      if (node.durationMs != null && node.durationMs > 500 && this.zoom > 0.5) {
-        const dur = node.durationMs < 1000 ? `${node.durationMs}ms` : `${(node.durationMs / 1000).toFixed(1)}s`
-        ctx.font = `${Math.max(7, fontSize * 0.7)}px monospace`
-        ctx.fillStyle = 'rgba(200,200,200,0.5)'
-        ctx.fillText(dur, sx, sy - er - 8)
-      }
+      ctx.globalAlpha = 1
     }
   }
 }

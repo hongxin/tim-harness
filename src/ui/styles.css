@@ -1050,3 +1050,11 @@ body.rp-resizing iframe { pointer-events: none; }
 /* 空态示例：标题字号收紧、描述可读性提升 */
 .example-title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
 .example-text { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; display: block; }
+
+.cosmos-caption {
+  position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+  background: rgba(16,20,28,0.85); backdrop-filter: blur(6px);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 14px; font-size: 13px; color: var(--text-dim); z-index: 10;
+  max-width: 500px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
+}
