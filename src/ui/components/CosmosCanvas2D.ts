@@ -2,7 +2,7 @@
  * Cosmos 2D v4 —— 约束力导向布局（Constrained Force-Directed）
  * 力场 + 语义约束 = 有机 + 有结构（参考中医药知识图谱可视化方法论）
  */
-export interface CosmosNode2D { id:string; kind:'user'|'assistant'|'tool'|'sub-agent'|'core'|'file'; content:string; toolName?:string; isError?:boolean; isRunning?:boolean; durationMs?:number; turnId:number; birthTime:number; x:number;y:number;vx:number;vy:number; radius:number; pinned:boolean; hue:number; gridCol?:number; gridRow?:number }
+export interface CosmosNode2D { id:string; kind:'user'|'assistant'|'tool'|'sub-agent'|'core'|'file'; content:string; toolName?:string; isError?:boolean; isRunning?:boolean; durationMs?:number; turnId:number; birthTime:number; x:number;y:number;vx:number;vy:number; radius:number; pinned:boolean; hue:number; gridCol?:number; gridRow?:number; dragged?:boolean }
 export interface CosmosEdge2D { id:string;fromId:string;toId:string; type:'flow'|'cross-turn'|'grid' }
 export interface TurnCluster { turnId:number;centerX:number;centerY:number;radius:number;nodeIds:string[];summary:string;hue:number;toolCount:number;hasError:boolean;totalDuration:number }
 export const TOOL_HUE:Record<string,number>={ls:140,read_file:200,write_file:160,edit_file:280,grep:180,glob:150,run_js:45,web_fetch:320,web_search:220,todo_write:100,spawn_agent:300,ask_user:50,skill:260,goal_update:120,snapshot_save:170,snapshot_restore:175,snapshot_list:165,snapshot_diff:168,snapshot_delete:172}
@@ -42,7 +42,7 @@ export function tickSim(sim: SimS) {
 
   // 1. 语义锚定：每个节点被强力拉向其语义位置
   for (const n of arr) {
-    if (n.pinned) continue
+    if (n.pinned || n.dragged) continue // 用户拖拽过的节点不被拉回
     let targetX: number, targetY: number
     if (n.kind === 'core') { targetX = -GAP; targetY = 0 }
     else if (n.kind === 'user') { targetX = n.turnId * GAP; targetY = USER_Y }
@@ -147,7 +147,7 @@ else if(m.role==='tool'){const tn=nodes.find(n=>n.kind==='tool'&&n.turnId===turn
 return{nodes,edges,clusters:[]}}
 interface Star{x:number;y:number;size:number;layer:number;alpha:number;twinkle:boolean}
 interface P{edgeId:string;t:number}
-export class CosmosCanvas2D{private c:HTMLCanvasElement;private x:CanvasRenderingContext2D;private w=0;private h=0;private dpr=1;private ai=0;private sim:SimS={nodes:new Map(),edges:[],clusters:new Map(),cooled:false};private st:Star[]=[];private pt:P[]=[];private t0=performance.now();private z=1;private ox=0;private oy=0;private hi:string|null=null;private si:string|null=null;private ft:number|null=null;private ro:ResizeObserver;private os:((n:CosmosNode2D|null)=>void)|null=null;private oc:((c:string|null)=>void)|null=null;private cam:{t:number;d:number;fx:number;fy:number;fz:number;tx:number;ty:number;tz:number}|null=null;private pan=false;private ps={x:0,y:0}
+export class CosmosCanvas2D{private c:HTMLCanvasElement;private x:CanvasRenderingContext2D;private w=0;private h=0;private dpr=1;private ai=0;private sim:SimS={nodes:new Map(),edges:[],clusters:new Map(),cooled:false};private st:Star[]=[];private pt:P[]=[];private t0=performance.now();private z=1;private ox=0;private oy=0;private hi:string|null=null;private si:string|null=null;private ft:number|null=null;private ro:ResizeObserver;private os:((n:CosmosNode2D|null)=>void)|null=null;private oc:((c:string|null)=>void)|null=null;private cam:{t:number;d:number;fx:number;fy:number;fz:number;tx:number;ty:number;tz:number}|null=null;private pan=false;private dn:string|null=null;private ps={x:0,y:0}
 constructor(c:HTMLCanvasElement){this.c=c;this.x=c.getContext('2d')!;this.ro=new ResizeObserver(()=>this.rs());this.ro.observe(c.parentElement||c);this.rs();this.is();this.lp();this.be()}
 destroy(){cancelAnimationFrame(this.ai);this.ro.disconnect();this.ue()}
 setOnNodeSelect(cb:(n:CosmosNode2D|null)=>void){this.os=cb}
@@ -163,9 +163,10 @@ private s2w(sx:number,sy:number):[number,number]{return[(sx-this.w/2)/this.z-thi
 private be(){this.c.addEventListener('wheel',this.ow);this.c.addEventListener('pointerdown',this.od);this.c.addEventListener('pointermove',this.om);this.c.addEventListener('pointerup',this.ou);this.c.addEventListener('pointerleave',this.ou)}
 private ue(){this.c.removeEventListener('wheel',this.ow);this.c.removeEventListener('pointerdown',this.od);this.c.removeEventListener('pointermove',this.om);this.c.removeEventListener('pointerup',this.ou);this.c.removeEventListener('pointerleave',this.ou)}
 private ow=(e:WheelEvent)=>{e.preventDefault();this.cam=null;this.z=Math.max(.1,Math.min(5,this.z*(e.deltaY>0?.9:1.1)))}
-private od=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);for(const n of[...this.sim.nodes.values()].reverse()){const dx=wx-n.x,dy=wy-n.y;if(dx*dx+dy*dy<=n.radius*n.radius){this.si=n.id;this.os?.(n);return}}for(const c of this.sim.clusters.values()){const dx=wx-c.centerX,dy=wy-c.centerY;if(dx*dx+dy*dy<=c.radius*c.radius){this.flyToTurn(c.turnId);return}}this.si=null;this.ft=null;this.os?.(null);this.oc?.(null);this.pan=true;this.ps={x:e.clientX,y:e.clientY}}
-private om=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();if(this.pan){this.cam=null;this.ox+=(e.clientX-this.ps.x)/this.z;this.oy+=(e.clientY-this.ps.y)/this.z;this.ps={x:e.clientX,y:e.clientY};return}const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);this.hi=null;for(const n of this.sim.nodes.values()){const dx=wx-n.x,dy=wy-n.y;if(dx*dx+dy*dy<=n.radius*n.radius){this.hi=n.id;break}}this.c.style.cursor=this.hi?'pointer':'grab'}
-private ou=()=>{this.pan=false}
+private od=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);for(const n of[...this.sim.nodes.values()].reverse()){const dx=wx-n.x,dy=wy-n.y;if(dx*dx+dy*dy<=n.radius*n.radius){this.si=n.id;this.os?.(n);this.dn=n.id;n.pinned=true;n.vx=0;n.vy=0;this.sim.cooled=false;return}}for(const c of this.sim.clusters.values()){const dx=wx-c.centerX,dy=wy-c.centerY;if(dx*dx+dy*dy<=c.radius*c.radius){this.flyToTurn(c.turnId);return}}this.si=null;this.ft=null;this.os?.(null);this.oc?.(null);this.pan=true;this.ps={x:e.clientX,y:e.clientY}}
+private om=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();if(this.dn){const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);const n=this.sim.nodes.get(this.dn);if(n){n.x=wx;n.y=wy;n.vx=0;n.vy=0;n.dragged=true;this.sim.cooled=false}return}
+if(this.pan){this.cam=null;this.ox+=(e.clientX-this.ps.x)/this.z;this.oy+=(e.clientY-this.ps.y)/this.z;this.ps={x:e.clientX,y:e.clientY};return}const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);this.hi=null;for(const n of this.sim.nodes.values()){const dx=wx-n.x,dy=wy-n.y;if(dx*dx+dy*dy<=n.radius*n.radius){this.hi=n.id;break}}this.c.style.cursor=this.hi?'pointer':'grab'}
+private ou=()=>{if(this.dn){const n=this.sim.nodes.get(this.dn);if(n)n.pinned=false;this.dn=null}this.pan=false}
 private rs(){const p=this.c.parentElement;if(!p)return;this.dpr=devicePixelRatio||1;this.w=p.clientWidth;this.h=p.clientHeight;this.c.width=this.w*this.dpr;this.c.height=this.h*this.dpr;this.c.style.width=`${this.w}px`;this.c.style.height=`${this.h}px`;this.x.setTransform(this.dpr,0,0,this.dpr,0,0)}
 private is(){this.st=[];for(let i=0;i<120;i++)this.st.push({x:Math.random()*3000-1500,y:Math.random()*2000-1000,size:Math.random()*1.5+.3,layer:Math.floor(Math.random()*3),alpha:Math.random()*.5+.15,twinkle:Math.random()<.1})}
 private lp=()=>{if(this.cam){const a=this.cam;a.t+=16/a.d;if(a.t>=1){this.ox=a.tx;this.oy=a.ty;this.z=a.tz;this.cam=null}else{const e=a.t<.5?4*a.t**3:1-(-2*a.t+2)**3/2;this.ox=a.fx+(a.tx-a.fx)*e;this.oy=a.fy+(a.ty-a.fy)*e;this.z=a.fz+(a.tz-a.fz)*e}}tickSim(this.sim);this.rd();this.ai=requestAnimationFrame(this.lp)}
