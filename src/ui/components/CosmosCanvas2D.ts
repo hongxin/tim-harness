@@ -52,7 +52,7 @@ export function tickSim(sim: SimS) {
       const row = n.gridRow ?? 0
       const toolCount = arr.filter((m) => m.turnId === n.turnId && m.kind === 'tool').length
       const centerOffset = (Math.min(toolCount, 3) - 1) / 2 * 44
-      targetX = n.turnId * GAP + col * 44 - centerOffset
+      targetX = n.turnId * GAP + col * 50 - centerOffset
       targetY = TOOL_Y0 + row * TOOL_DH
     }
     else { targetX = n.turnId * GAP + 100; targetY = 50 }
@@ -65,16 +65,23 @@ export function tickSim(sim: SimS) {
     n.vy += (targetY - n.y) * strength
   }
 
-  // 2. 碰撞消解：仅在节点重叠时推开（不影响远处的语义位置）
+  // 2. 碰撞消解：仅在跨回合节点重叠时推开（同回合网格节点已由间距保证）
+  // 根因修复：同回合工具方块的网格间距(44px) < 碰撞最小距离(48px)
+  // → 碰撞力永远激活 → 与锚定力形成永久振荡（抖动的根源）
+  // 解法：同回合的网格定位节点跳过碰撞（它们的间距由网格决定，不需要力来保证）
   for (let i = 0; i < arr.length; i++) {
     for (let j = i + 1; j < arr.length; j++) {
       const a = arr[i], b = arr[j]
+      // 跳过同回合的碰撞（网格已处理间距）
+      if (a.turnId === b.turnId && a.kind !== 'user' && b.kind !== 'user') continue
+      // 用户与同回合助手的碰撞也跳过（层级约束已保证垂直分离）
+      if (a.turnId === b.turnId) continue
       const dx = b.x - a.x, dy = b.y - a.y
       const dist = Math.sqrt(dx * dx + dy * dy)
       const minDist = (a.radius + b.radius) * COLLIDE_RANGE
       if (dist < minDist && dist > 0.1) {
         const f = COLLIDE / (dist * dist)
-        const fx = (dx / dist) * f, fy = (dy / dist) * f * 0.3 // Y 方向弱（让层级主导）
+        const fx = (dx / dist) * f, fy = (dy / dist) * f * 0.3
         if (!a.pinned) { a.vx -= fx; a.vy -= fy }
         if (!b.pinned) { b.vx += fx; b.vy += fy }
       }
@@ -135,7 +142,7 @@ const nodes:CosmosNode2D[]=[],edges:CosmosEdge2D[]=[];let turn=0
 if(folded>0)nodes.push({id:'core',kind:'core',content:`⚡ ${folded} 条已压缩`,turnId:-1,birthTime:performance.now(),x:-GAP,y:0,vx:0,vy:0,radius:R.core,pinned:false,hue:KIND_HUE.core})
 msgs.slice(folded).forEach((m,i)=>{const now=performance.now()
 if(m.role==='user'){turn++;const id=`u${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'user',content:(m.content??'').slice(0,120),turnId:turn,birthTime:now,x:tx,y:USER_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.user,pinned:false,hue:KIND_HUE.user});const p=nodes[nodes.length-2];if(p)edges.push({id:`xt${i}`,fromId:p.id,toId:id,type:'cross-turn'})}
-else if(m.role==='assistant'){const id=`a${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'assistant',content:(m.content??'').slice(0,120)||`${m.tool_calls?.length??0} 工具`,turnId:turn,birthTime:now,x:tx,y:ASST_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.assistant,pinned:false,hue:KIND_HUE.assistant});const un=nodes.find(n=>n.kind==='user'&&n.turnId===turn);if(un)edges.push({id:`f${i}`,fromId:un.id,toId:id,type:'flow'});if(m.tool_calls)m.tool_calls.forEach((tc,j)=>{const tid=`t${i}_${j}`;nodes.push({id:tid,kind:'tool',content:tc.name,toolName:tc.name,turnId:turn,birthTime:now,x:tx+(j%3-(Math.min(m.tool_calls!.length,3)-1)/2)*44+(Math.random()-.5)*JITTER,y:TOOL_Y0+Math.floor(j/3)*TOOL_DH+(Math.random()-.5)*JITTER, gridCol:j%3, gridRow:Math.floor(j/3),vx:0,vy:0,radius:R.tool,pinned:false,hue:TOOL_HUE[tc.name]??210});edges.push({id:`g${tid}`,fromId:id,toId:tid,type:'grid'})})}
+else if(m.role==='assistant'){const id=`a${i}`,tx=turn*GAP+(Math.random()-.5)*40;nodes.push({id,kind:'assistant',content:(m.content??'').slice(0,120)||`${m.tool_calls?.length??0} 工具`,turnId:turn,birthTime:now,x:tx,y:ASST_Y+(Math.random()-.5)*JITTER,vx:0,vy:0,radius:R.assistant,pinned:false,hue:KIND_HUE.assistant});const un=nodes.find(n=>n.kind==='user'&&n.turnId===turn);if(un)edges.push({id:`f${i}`,fromId:un.id,toId:id,type:'flow'});if(m.tool_calls)m.tool_calls.forEach((tc,j)=>{const tid=`t${i}_${j}`;nodes.push({id:tid,kind:'tool',content:tc.name,toolName:tc.name,turnId:turn,birthTime:now,x:tx+(j%3-(Math.min(m.tool_calls!.length,3)-1)/2)*50+(Math.random()-.5)*JITTER,y:TOOL_Y0+Math.floor(j/3)*TOOL_DH+(Math.random()-.5)*JITTER, gridCol:j%3, gridRow:Math.floor(j/3),vx:0,vy:0,radius:R.tool,pinned:false,hue:TOOL_HUE[tc.name]??210});edges.push({id:`g${tid}`,fromId:id,toId:tid,type:'grid'})})}
 else if(m.role==='tool'){const tn=nodes.find(n=>n.kind==='tool'&&n.turnId===turn&&n.toolName===m.name&&n.durationMs==null);if(tn){tn.isError=m.toolOk===false;tn.durationMs=m.durationMs;tn.content=`${m.name} ${m.toolOk===false?'✗':'✓'}`}}})
 return{nodes,edges,clusters:[]}}
 interface Star{x:number;y:number;size:number;layer:number;alpha:number;twinkle:boolean}
