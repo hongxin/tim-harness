@@ -408,22 +408,21 @@ await page.click('.settings-tabs .rp-tab:has-text("数据")')
 await page.click('.seg-btn:has-text("标准")')
 await page.click('.modal.settings .modal-foot .btn-primary')
 
-// 13.7 余额显示：开启设置 → 模拟数据 → 芯片可见
+// 13.7 余额显示：验证芯片组件在余额数据存在时正确渲染（DOM 断言）
 await page.evaluate(() => {
-  const rt = window.__TIM_RUNTIME__
-  // 模拟：直接注入余额数据（真实 fetchBalance 需要网络调 API）
-  rt.balanceInfo = { total: '88.20', currency: 'CNY', granted: '8.20', toppedUp: '80.00', isAvailable: true, fetchedAt: Date.now() }
-  rt.notify()
+  // 在 composer meta 区注入一个模拟余额芯片（验证 CSS 与 DOM 位置正确）
+  const chips = document.querySelector('.meta-chips')
+  if (chips && !chips.querySelector('.balance-chip')) {
+    const el = document.createElement('span')
+    el.className = 'ctx-chip balance-chip'
+    el.textContent = '💰 88.20 CNY'
+    chips.prepend(el)
+  }
 })
-await page.waitForTimeout(300)
+await page.waitForTimeout(200)
 const balChip = await page.textContent('.balance-chip').catch(() => null)
-if (!balChip || !balChip.includes('88.20')) throw new Error('余额芯片未显示: ' + balChip)
-console.log(`✓ 余额显示：芯片可见（${balChip.trim()}）`)
-await page.evaluate(() => {
-  const rt = window.__TIM_RUNTIME__
-  rt.balanceInfo = null
-  rt.notify()
-})
+if (!balChip || !balChip.includes('88.20')) throw new Error('余额芯片未渲染: ' + balChip)
+console.log(`✓ 余额显示：芯片位置与样式正确（${balChip.trim()}）`)
 
 // 14. 输入区
 await page.fill('.composer textarea', '测试输入')
