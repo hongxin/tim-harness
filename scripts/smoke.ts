@@ -1164,6 +1164,21 @@ const FINAL = () => [
     activeProviderId: 'deepseek', proxyTemplate: '', webSearch: null, showBalance: 'off',
   })
   assert(rt18.getSnapshot().balance === null, '余额：关闭后清空')
+
+  // 18b. 软性 bug 修复：查询失败不清缓存（保留最后一次成功数据）
+  await rt18.saveSettings({
+    providers: [{ id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: 'sk-test', model: 'deepseek-flash' }],
+    activeProviderId: 'deepseek', proxyTemplate: '', webSearch: null, showBalance: 'on',
+  })
+  await new Promise((r) => setTimeout(r, 50))
+  assert(rt18.getSnapshot().balance !== null, '余额修复：重新开启后成功查询')
+  // 模拟网络失败（transport 抛异常）→ 余额不应消失
+  const t18b = new ScriptedTransport([])
+  t18b.request = async () => { throw new Error('网络抖动') }
+  ;(rt18 as any).deps.transport = t18b
+  const r18b = await rt18.fetchBalance()
+  assert(r18b !== null, '余额修复：网络失败不清缓存（保留旧数据）')
+  assert(rt18.getSnapshot().balance !== null && rt18.getSnapshot().balance!.total === '42.50', '余额修复：芯片数据持久')
 }
 
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

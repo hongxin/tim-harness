@@ -338,7 +338,7 @@ export class HarnessRuntime {
     this.lastError = null
     this.notify()
     if (settings.showBalance === 'on') void this.fetchBalance()
-    else {
+    else if (this.balanceInfo !== null) {
       this.balanceInfo = null
       this.notify()
     }
@@ -796,9 +796,12 @@ export class HarnessRuntime {
    */
   async fetchBalance(): Promise<BalanceInfo | null> {
     const provider = this.activeProvider()
+    // 仅当不再是 DeepSeek（或无 key）时才清空显示
     if (!provider?.apiKey || !/deepseek/i.test(provider.baseURL)) {
-      this.balanceInfo = null
-      this.notify()
+      if (this.balanceInfo !== null) {
+        this.balanceInfo = null
+        this.notify()
+      }
       return null
     }
     try {
@@ -809,18 +812,13 @@ export class HarnessRuntime {
         headers: { authorization: `Bearer ${provider.apiKey}` },
       })
       if (res.status !== 200) {
+        // 不清缓存：保留最后一次成功数据（可能是限流/抖动）
         console.warn('[tim-harness] 余额查询失败', res.status)
-        this.balanceInfo = null
-        this.notify()
-        return null
+        return this.balanceInfo
       }
       const data = JSON.parse(await res.text())
       const info = data?.balance_infos?.[0]
-      if (!info) {
-        this.balanceInfo = null
-        this.notify()
-        return null
-      }
+      if (!info) return this.balanceInfo
       this.balanceInfo = {
         total: String(info.total_balance ?? '0'),
         currency: String(info.currency ?? 'CNY'),
@@ -832,9 +830,8 @@ export class HarnessRuntime {
       this.notify()
       return this.balanceInfo
     } catch {
-      this.balanceInfo = null
-      this.notify()
-      return null
+      // 不清缓存：网络/CORS 瞬时失败时保留旧数据（下次成功后自动更新）
+      return this.balanceInfo
     }
   }
 
