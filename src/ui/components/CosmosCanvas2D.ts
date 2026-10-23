@@ -149,19 +149,53 @@ interface Star{x:number;y:number;size:number;layer:number;alpha:number;twinkle:b
 interface P{edgeId:string;t:number}
 export class CosmosCanvas2D{private c:HTMLCanvasElement;private x:CanvasRenderingContext2D;private w=0;private h=0;private dpr=1;private ai=0;private sim:SimS={nodes:new Map(),edges:[],clusters:new Map(),cooled:false};private st:Star[]=[];private pt:P[]=[];private t0=performance.now();private z=1;private ox=0;private oy=0;private hi:string|null=null;private si:string|null=null;private ft:number|null=null;private ro:ResizeObserver;private os:((n:CosmosNode2D|null)=>void)|null=null;private oc:((c:string|null)=>void)|null=null;private cam:{t:number;d:number;fx:number;fy:number;fz:number;tx:number;ty:number;tz:number}|null=null;private pan=false;private dn:string|null=null
   // 主题配色（从 CSS 变量读取，随主题切换更新）
-  private theme:{dark:boolean;bg:string;bgEdge:string;star:string;text:string;textDim:string;line:string;lineSub:string}={
-    dark:true,bg:'hsl(230,20%,8%)',bgEdge:'hsl(230,15%,3%)',star:'rgba(220,230,255,',text:'hsla(0,0%,95%,',textDim:'hsla(0,0%,70%,',line:'hsla(210,30%,30%,',lineSub:'hsla(210,25%,40%,'
+  private theme = this.defaultTheme()
+  private defaultTheme() {
+    return {
+      dark: true,
+      bg: 'hsl(230,20%,8%)', bgEdge: 'hsl(230,15%,3%)',
+      star: 'rgba(220,230,255,',
+      text: 'hsla(0,0%,95%,', textDim: 'hsla(0,0%,70%,',
+      line: 'hsla(210,30%,30%,', lineSub: 'hsla(210,25%,40%,',
+      glow: (h: number, s: number, a: number) => `hsla(${h},${s}%,65%,${a})`,
+      particle: 'hsla(45,80%,70%,.6)',
+      clusterLine: (h: number, a: number) => `hsla(${h},50%,55%,${a})`,
+      clusterLabel: (h: number, a: number) => `hsla(${h},30%,60%,${a})`,
+      region: (h: number, a: number) => `hsla(${h},30%,50%,${a})`,
+      bodyBoost: 15, bodyCut: -10,
+      selectRing: (h: number) => `hsla(${h},90%,70%,.8)`,
+    }
   }
 
   /** 从 CSS 变量读取当前主题配色（浅色/深色自适应） */
   updateTheme(){const root=document.documentElement;const isLight=root.dataset.theme==='light'
     this.theme.dark=!isLight
-    if(isLight){this.theme.bg='hsl(220,15%,96%)';this.theme.bgEdge='hsl(220,12%,90%)';this.theme.star='rgba(80,90,120,'
+    if(isLight){
+      this.theme.bg='hsl(220,15%,96%)';this.theme.bgEdge='hsl(220,12%,90%)'
+      this.theme.star='rgba(80,90,120,'
       this.theme.text='hsla(0,0%,15%,';this.theme.textDim='hsla(0,0%,40%,'
-      this.theme.line='hsla(210,20%,60%,';this.theme.lineSub='hsla(210,15%,70%,'}
-    else{this.theme.bg='hsl(230,20%,8%)';this.theme.bgEdge='hsl(230,15%,3%)';this.theme.star='rgba(220,230,255,'
+      this.theme.line='hsla(210,20%,60%,';this.theme.lineSub='hsla(210,15%,70%,'
+      // 发光/粒子/区域：浅色下降低饱和度、提高亮度
+      this.theme.glow=(h,s,a)=>`hsla(${h},${Math.round(s*0.5)}%,80%,${a*0.6})`
+      this.theme.particle='hsla(210,50%,50%,.5)'
+      this.theme.clusterLine=(h,a)=>`hsla(${h},40%,60%,${a})`
+      this.theme.clusterLabel=(h,a)=>`hsla(${h},30%,35%,${a})`
+      this.theme.region=(h,a)=>`hsla(${h},25%,70%,${a})`
+      this.theme.bodyBoost=0;this.theme.bodyCut=-5 // 浅色下节点体色更柔和
+      this.theme.selectRing=(h)=>`hsla(${h},60%,40%,.8)`
+    }else{
+      this.theme.bg='hsl(230,20%,8%)';this.theme.bgEdge='hsl(230,15%,3%)'
+      this.theme.star='rgba(220,230,255,'
       this.theme.text='hsla(0,0%,95%,';this.theme.textDim='hsla(0,0%,70%,'
-      this.theme.line='hsla(210,30%,30%,';this.theme.lineSub='hsla(210,25%,40%,'}};private ps={x:0,y:0}
+      this.theme.line='hsla(210,30%,30%,';this.theme.lineSub='hsla(210,25%,40%,'
+      this.theme.glow=(h,s,a)=>`hsla(${h},${s}%,65%,${a})`
+      this.theme.particle='hsla(45,80%,70%,.6)'
+      this.theme.clusterLine=(h,a)=>`hsla(${h},50%,55%,${a})`
+      this.theme.clusterLabel=(h,a)=>`hsla(${h},30%,60%,${a})`
+      this.theme.region=(h,a)=>`hsla(${h},30%,50%,${a})`
+      this.theme.bodyBoost=15;this.theme.bodyCut=-10 // 深色下节点体色更鲜明
+      this.theme.selectRing=(h)=>`hsla(${h},90%,70%,.8)`
+    }};private ps={x:0,y:0}
 constructor(c:HTMLCanvasElement){this.c=c;this.x=c.getContext('2d')!;this.ro=new ResizeObserver(()=>this.rs());this.ro.observe(c.parentElement||c);this.updateTheme();this.rs();this.is();this.lp();this.be()}
 destroy(){cancelAnimationFrame(this.ai);this.ro.disconnect();this.ue()}
 setOnNodeSelect(cb:(n:CosmosNode2D|null)=>void){this.os=cb}
@@ -187,7 +221,7 @@ private lp=()=>{if(this.cam){const a=this.cam;a.t+=16/a.d;if(a.t>=1){this.ox=a.t
 private rd(){const ctx=this.x;const now=performance.now();const tm=(now-this.t0)/1000
 const bg=ctx.createRadialGradient(this.w/2,this.h/2,0,this.w/2,this.h/2,Math.max(this.w,this.h)*.7);bg.addColorStop(0,this.theme.bg);bg.addColorStop(1,this.theme.bgEdge);ctx.fillStyle=bg;ctx.fillRect(0,0,this.w,this.h)
 const px=[.1,.3,.6];for(const s of this.st){const sx=(s.x+this.ox*px[s.layer])*this.z+this.w/2,sy=(s.y+this.oy*px[s.layer])*this.z+this.h/2;if(sx<-5||sx>this.w+5||sy<-5||sy>this.h+5)continue;ctx.beginPath();ctx.arc(sx,sy,s.size*this.z,0,Math.PI*2);ctx.fillStyle=`${this.theme.star}${s.twinkle?s.alpha*(.5+.5*Math.sin(tm*2+s.x*.01)):s.alpha})`;ctx.fill()}
-for(const c of this.sim.clusters.values()){const[sx,sy]=this.w2s(c.centerX,c.centerY);const r=c.radius*this.z;if(sx+r<0||sx-r>this.w)continue;const isF=this.ft===null||this.ft===c.turnId;ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.strokeStyle=`hsla(${c.hue},50%,55%,${isF?.08:.02})`;ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);if(this.z>.5&&c.turnId>=0){ctx.font=`${10*this.z}px monospace`;ctx.textAlign='center';ctx.fillStyle=`hsla(${c.hue},30%,60%,${isF?.35:.08})`;ctx.fillText(`T${c.turnId+1}`,sx,sy-r-8)}}
+for(const c of this.sim.clusters.values()){const[sx,sy]=this.w2s(c.centerX,c.centerY);const r=c.radius*this.z;if(sx+r<0||sx-r>this.w)continue;const isF=this.ft===null||this.ft===c.turnId;ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.strokeStyle=this.theme.clusterLine(c.hue,isF?.08:.02);ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);if(this.z>.5&&c.turnId>=0){ctx.font=`${10*this.z}px monospace`;ctx.textAlign='center';ctx.fillStyle=this.theme.clusterLabel(c.hue,isF?.35:.08);ctx.fillText(`T${c.turnId+1}`,sx,sy-r-8)}}
 // ─── 地形层：地图感的核心 ───
 
 // 1. 地面线（工具层的视觉基底，像地图的海平面）
@@ -219,13 +253,13 @@ for (const c of this.sim.clusters.values()) {
   // 微妙的领地填充
   const regionAlpha = isF ? 0.015 : 0.005
   const grad = ctx.createLinearGradient(sx, topY, sx, botY)
-  grad.addColorStop(0, `hsla(${hue}, 30%, 50%, ${regionAlpha})`)
-  grad.addColorStop(1, `hsla(${hue}, 20%, 40%, ${regionAlpha * 0.5})`)
+  grad.addColorStop(0, this.theme.region(hue, regionAlpha))
+  grad.addColorStop(1, this.theme.region(hue, regionAlpha * 0.5))
   ctx.fillStyle = grad
   ctx.fillRect(sx - w / 2, topY, w, botY - topY)
   // 领地边界（左右各一条极淡的竖线）
   if (isF && this.z > 0.4) {
-    ctx.strokeStyle = `hsla(${hue}, 40%, 50%, 0.03)`
+    ctx.strokeStyle = this.theme.clusterLine(hue, this.theme.dark ? 0.03 : 0.06)
     ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(sx - w/2, topY); ctx.lineTo(sx - w/2, botY); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(sx + w/2, topY); ctx.lineTo(sx + w/2, botY); ctx.stroke()
@@ -266,13 +300,13 @@ for (const n of this.sim.nodes.values()) {
 }
 
 for(const e of this.sim.edges){const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;const isF=this.ft===null||a.turnId===this.ft||b.turnId===this.ft;if(!isF)continue;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.moveTo(x1,y1);if(e.type==='grid'){ctx.lineTo(x2,y2);ctx.strokeStyle=this.theme.dark?`hsla(${a.hue},40%,50%,.12)`:`hsla(${a.hue},40%,40%,.18)`;ctx.lineWidth=1}else{const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.sqrt(dx*dx+dy*dy)||1;ctx.quadraticCurveTo(mx-dy/l*l*.1,my+dx/l*l*.1,x2,y2);if(e.type==='cross-turn'){ctx.strokeStyle=this.theme.dark?'hsla(200,50%,50%,.18)':'hsla(200,40%,35%,.25)';ctx.lineWidth=2.5}else{ctx.strokeStyle=this.theme.dark?'hsla(200,55%,50%,.22)':'hsla(200,45%,35%,.3)';ctx.lineWidth=1.8}}ctx.stroke()}
-for(const p of this.pt){const e=this.sim.edges.find(ed=>ed.id===p.edgeId);if(!e||e.type==='grid')continue;const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;if(this.ft!==null&&a.turnId!==this.ft)continue;p.t=(p.t+.005)%1;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.arc(x1+(x2-x1)*p.t,y1+(y2-y1)*p.t,2.5,0,Math.PI*2);ctx.fillStyle='hsla(45,80%,70%,.6)';ctx.fill()}
+for(const p of this.pt){const e=this.sim.edges.find(ed=>ed.id===p.edgeId);if(!e||e.type==='grid')continue;const a=this.sim.nodes.get(e.fromId),b=this.sim.nodes.get(e.toId);if(!a||!b)continue;if(this.ft!==null&&a.turnId!==this.ft)continue;p.t=(p.t+.005)%1;const[x1,y1]=this.w2s(a.x,a.y);const[x2,y2]=this.w2s(b.x,b.y);ctx.beginPath();ctx.arc(x1+(x2-x1)*p.t,y1+(y2-y1)*p.t,2.5,0,Math.PI*2);ctx.fillStyle=this.theme.particle;ctx.fill()}
 const fs=Math.max(9,11*this.z);ctx.textAlign='center';ctx.textBaseline='middle'
 for(const n of this.sim.nodes.values()){const[sx,sy]=this.w2s(n.x,n.y);const r=n.radius*this.z;if(r<2||sx<-r*3||sx>this.w+r*3||sy<-r*3||sy>this.h+r*3)continue;const isF=this.ft===null||n.turnId===this.ft;const al=isF?1:.12;const isH=this.hi===n.id;const isS=this.si===n.id;const ag=now-n.birthTime;const bi=Math.min(1,ag/800);const ea=1-(1-bi)**3;const er=r*ea;if(er<.5)continue;const{hue}=n;const sa=n.isError?90:70;const li=n.isError?40:n.kind==='core'?55:50;ctx.globalAlpha=al
-const gr=er*(isH?2.5:1.5);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr);g.addColorStop(0,`hsla(${hue},${sa}%,65%,${(isH?.35:.15)*al})`);g.addColorStop(1,'transparent');ctx.beginPath();ctx.arc(sx,sy,gr,0,Math.PI*2);ctx.fillStyle=g;ctx.fill()
-if(bi<1&&isF){const pl=Math.sin(bi*Math.PI)*.4;if(pl>0){ctx.beginPath();ctx.arc(sx,sy,er*(1+bi),0,Math.PI*2);ctx.strokeStyle=`hsla(${hue},80%,70%,${pl*al})`;ctx.lineWidth=2;ctx.stroke()}}
-if(n.kind==='tool'){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+15}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li-10}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=`hsla(${hue},${sa}%,${li+20}%,.4)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+15}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li-10}%,.7)`);ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
-if(isS){ctx.beginPath();ctx.arc(sx,sy,er+3,0,Math.PI*2);ctx.strokeStyle=`hsla(${hue},90%,70%,.8)`;ctx.lineWidth=2;ctx.stroke()}
+const gr=er*(isH?2.5:1.5);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr);g.addColorStop(0,this.theme.glow(hue,sa,(isH?.35:.15)*al));g.addColorStop(1,'transparent');ctx.beginPath();ctx.arc(sx,sy,gr,0,Math.PI*2);ctx.fillStyle=g;ctx.fill()
+if(bi<1&&isF){const pl=Math.sin(bi*Math.PI)*.4;if(pl>0){ctx.beginPath();ctx.arc(sx,sy,er*(1+bi),0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,80,pl*al);ctx.lineWidth=2;ctx.stroke()}}
+if(n.kind==='tool'){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=this.theme.dark?`hsla(${hue},${sa}%,${li+20}%,.4)`:`hsla(${hue},${sa}%,${li-10}%,.5)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
+if(isS){ctx.beginPath();ctx.arc(sx,sy,er+3,0,Math.PI*2);ctx.strokeStyle=this.theme.selectRing(hue);ctx.lineWidth=2;ctx.stroke()}
 // 用户拖拽过的节点：虚线圆环标记（地图上的"用户标记"）
 if(n.dragged){ctx.beginPath();ctx.arc(sx,sy,er+5,0,Math.PI*2);ctx.strokeStyle=this.theme.dark?'hsla(45,60%,60%,.3)':'hsla(45,60%,40%,.4)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([])}
 if(n.isError){ctx.fillStyle=`hsla(0,90%,60%,${.9*al})`;ctx.font=`bold ${Math.max(9,er*.5)}px sans-serif`;ctx.fillText('✗',sx+er*.5,sy-er*.5)}
