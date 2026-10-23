@@ -281,6 +281,8 @@ export class HarnessRuntime {
     await this.refreshSkills()
     this.booted = true
     this.notify()
+    // 余额显示开启 → 启动时立即查询（修复：刷新页面后芯片消失直到下次对话才恢复）
+    if (this.settings?.showBalance === 'on') void this.fetchBalance()
   }
 
   /** 扫描 /skills/ 下各技能的 SKILL.md，变更时通知（系统提示注入 + UI 展示） */
