@@ -58,8 +58,11 @@ export function tickSim(sim: SimS) {
     else { targetX = n.turnId * GAP + 100; targetY = 50 }
 
     // 强力锚定（比碰撞力强 → 语义位置是"家"）
-    n.vx += (targetX - n.x) * 0.15
-    n.vy += (targetY - n.y) * 0.15
+    // 自适应锚定：距离远→强拉（快速到位），距离近→温和（避免过冲振荡）
+    const dist = Math.sqrt((targetX-n.x)**2 + (targetY-n.y)**2)
+    const strength = Math.min(0.2, Math.max(0.05, dist * 0.002))
+    n.vx += (targetX - n.x) * strength
+    n.vy += (targetY - n.y) * strength
   }
 
   // 2. 碰撞消解：仅在节点重叠时推开（不影响远处的语义位置）
@@ -94,13 +97,13 @@ export function tickSim(sim: SimS) {
   // 4. 应用运动
   for (const n of arr) {
     if (n.pinned) continue
-    n.vx *= 0.75; n.vy *= 0.75
+    n.vx *= 0.65; n.vy *= 0.65
     const sp = Math.sqrt(n.vx * n.vx + n.vy * n.vy)
     if (sp > 6) { n.vx = n.vx / sp * 6; n.vy = n.vy / sp * 6 }
     n.x += n.vx; n.y += n.vy
     energy += n.vx * n.vx + n.vy * n.vy
   }
-  if (energy < 0.01) sim.cooled = true
+  if (energy < 0.1) sim.cooled = true
 
   // 更新回合聚集
   const bt = new Map<number, CosmosNode2D[]>()
