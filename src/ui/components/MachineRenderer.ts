@@ -324,7 +324,15 @@ export class MachineRenderer {
     this.zoom = Math.min(this.w / 1400, this.h / 900)
     this.offsetX = -700
     this.offsetY = -450
-  }px`; this.canvas.style.height = `${this.h}px`
+  }
+
+  private resize() {
+    const p = this.canvas.parentElement
+    if (!p) return
+    this.dpr = window.devicePixelRatio || 1
+    this.w = p.clientWidth; this.h = p.clientHeight
+    this.canvas.width = this.w * this.dpr; this.canvas.height = this.h * this.dpr
+    this.canvas.style.width = `${this.w}px`; this.canvas.style.height = `${this.h}px`
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
   }
 
