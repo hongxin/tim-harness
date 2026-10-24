@@ -25,7 +25,6 @@ export function MachineView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; 
     )
     rendererRef.current.setData(data)
     // 调试接口
-    ;(window as any).__PIPELINE_DEBUG__ = data
   }, [snapshot.rev, snapshot.session]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
