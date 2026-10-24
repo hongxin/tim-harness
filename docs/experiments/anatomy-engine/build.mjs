@@ -188,9 +188,23 @@ function indexWheel() {
   ));
   out.push(S(k.cylinder(INDEX[0], INDEX[1], 2.2, C_Z + 4, 3, P, 20), { tone: "mid" }));
   out.push(D([at([INDEX[0], INDEX[1], C_Z + 7])], { size: 0.7, tone: "hi" }));
-  // 联动杆：分度轮轮毂 → 曲轴箱侧支架（时序链）
-  out.push(L(k.segment([INDEX[0] - 2, INDEX[1], C_Z + 6], [ENG[0] + 30, ENG[1] - 8, 12], P), { tone: "lo" }));
-  out.push(D([at([ENG[0] + 30, ENG[1] - 8, 12])], { size: 0.6, tone: "lo" }));
+  return out.join("");
+}
+
+/* ---------------- 时序联动杆（分度轮 → 导向柱 → 曲轴箱托架） ---------------- */
+function timingLink() {
+  const out = [];
+  const GUIDE = [INDEX[0], INDEX[1] - 22];          // 导向柱（分度轮前方，落地）
+  const SHELF = { x: ENG[0] + 30, y: ENG[1] - 12, w: 7, d: 10, r: 1.5 }; // 箱侧托架
+  const SHELF_Z = 9;
+  out.push(S(k.cylinder(GUIDE[0], GUIDE[1], 2.2, 0, 10, P, 16), { tone: "mid", crease: "none" }));
+  out.push(L(k.ring(GUIDE[0], GUIDE[1], 3.2, 0, P, 16), { tone: "lo" }));
+  out.push(D([at([GUIDE[0], GUIDE[1], 10])], { size: 0.6, tone: "lo" }));
+  // 段1：轮毂顶 → 导向柱顶；段2：导向柱顶 → 托架面（低空，末端没入托架）
+  out.push(L(k.segment([INDEX[0], INDEX[1], C_Z + 7], [GUIDE[0], GUIDE[1], 10.4], P), { tone: "lo" }));
+  out.push(L(k.segment([GUIDE[0], GUIDE[1], 10.4], [SHELF.x + 3, SHELF.y + 5, SHELF_Z + 3], P), { tone: "lo" }));
+  out.push(S(k.slabOf(SHELF, SHELF_Z, 3, P, 2, 0.4), { tone: "mid" }));
+  out.push(D([at([SHELF.x + 3, SHELF.y + 5, SHELF_Z + 3])], { size: 0.5, tone: "lo" }));
   return out.join("");
 }
 
@@ -340,6 +354,7 @@ const svg = k.figureSvg({
     `<g data-part="shoe">${clutchShoe()}</g>`,
     `<g data-part="orbit">${D([at([FLY[0] + FLY_R - 2.4, FLY[1], FLY_TOP + 0.4])], { size: 0.9, tone: "hi" })}</g>`,
     indexWheel(),
+    timingLink(),
     `<g data-part="idot">${D([at([INDEX[0] + I_R - 3.2, INDEX[1], C_Z + 4])], { size: 0.9, tone: "hi" })}</g>`,
     engineStatic(),
     `<g data-part="piston">${pistonGroup()}</g>`,
