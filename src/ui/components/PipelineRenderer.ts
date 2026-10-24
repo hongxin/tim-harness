@@ -45,6 +45,15 @@ const TOOL_ICONS: Record<string, string> = {
   goal_update: '🎯', snapshot_save: '💾',
 }
 
+const TOOL_DESC: Record<string, string> = {
+  read_file: '读取文件内容', write_file: '写入新文件', edit_file: '修改已有文件',
+  run_js: '沙箱执行代码', grep: '搜索匹配模式', glob: '文件模式匹配',
+  ls: '列出目录', web_fetch: '抓取网页', web_search: '网络搜索',
+  skill: '装载领域技能', spawn_agent: '派生子代理', ask_user: '询问用户',
+  todo_write: '更新任务清单', goal_update: '更新目标状态',
+  snapshot_save: '保存快照', snapshot_restore: '恢复快照',
+}
+
 function toolIcon(name: string): string {
   return TOOL_ICONS[name] ?? '🔧'
 }
@@ -53,13 +62,13 @@ function toolIcon(name: string): string {
    布局常量
    ═════════════════════════════════════════════════ */
 
-const PIPE_W = 150        // 管道宽
-const USER_H = 50         // 用户节点高
-const THINK_H = 60        // 思考节点高
-const TOOL_H = 36         // 工具节点高
-const DONE_H = 40         // 完成节点高
-const GAP_V = 8           // 垂直间距
-const GAP_H = 50          // 管道间水平间距
+const PIPE_W = 300        // 管道宽
+const USER_H = 70         // 用户节点高
+const THINK_H = 90        // 思考节点高
+const TOOL_H = 52         // 工具节点高
+const DONE_H = 56         // 完成节点高
+const GAP_V = 14           // 垂直间距
+const GAP_H = 60          // 管道间水平间距
 const HEADER_H = 28       // 回合标题高
 const FOOTER_H = 60       // 底部仪表高
 
@@ -71,7 +80,7 @@ interface PipeTurn {
   turnId: number
   userText: string
   thinkSteps: string[]
-  tools: Array<{ name: string; ok: boolean; dur: number }>
+  tools: Array<{ name: string; ok: boolean; dur: number; desc?: string }>
   finalText: string
 }
 
@@ -99,7 +108,7 @@ function parseTurns(
     } else if (msg.role === 'assistant' && current) {
       if (msg.tool_calls) {
         current.thinkSteps.push(`${msg.tool_calls.length} 个工具`)
-        for (const tc of msg.tool_calls) current.tools.push({ name: tc.name, ok: true, dur: 0 })
+        for (const tc of msg.tool_calls) current.tools.push({ name: tc.name, ok: true, dur: 0, desc: TOOL_DESC[tc.name] ?? '' })
       } else if (msg.content) {
         current.finalText = msg.content.slice(0, 30)
       }
@@ -149,10 +158,18 @@ export class PipelineRenderer {
 
   private fit() {
     if (!this.data || this.data.turns.length === 0) return
+    // 计算总内容尺寸
+    const maxTools = Math.max(...this.data.turns.map(t => t.tools.length), 1)
     const totalW = this.data.turns.length * (PIPE_W + GAP_H) - GAP_H
-    this.zoom = Math.min(1, this.w / (totalW + 40))
-    this.offsetX = 0
-    this.offsetY = HEADER_H
+    const totalH = HEADER_H + USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4 + FOOTER_H
+    // 适配 + 居中
+    this.zoom = Math.min(this.w / totalW, this.h / totalH, 1.2)
+    // 水平居中
+    const scaledW = totalW * this.zoom
+    this.offsetX = (this.w - scaledW) / 2
+    // 垂直居中（考虑底部仪表）
+    const scaledH = (totalH - FOOTER_H) * this.zoom
+    this.offsetY = Math.max(10, (this.h - FOOTER_H - scaledH) / 2)
   }
 
   private w2s(wx: number, wy: number): [number, number] {
@@ -250,6 +267,13 @@ export class PipelineRenderer {
       ctx.lineTo(sx2 - 12, sy2 + 5)
       ctx.closePath()
       ctx.fill()
+      // 连接标签
+      if (this.zoom > 0.5) {
+        ctx.fillStyle = C.textDim + '50'
+        ctx.font = `${9 * this.zoom}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.fillText('→', (sx1 + sx2) / 2, sy1 - 8)
+      }
       // 流动粒子
       const pt = (t * 0.5 + ti * 0.3) % 1
       const px = sx1 + 4 + (sx2 - 12 - sx1 - 4) * pt
@@ -280,12 +304,19 @@ export class PipelineRenderer {
 
     // 管道背景（整体轮廓）
     const totalH = (USER_H + THINK_H + turn.tools.length * TOOL_H + (turn.finalText ? DONE_H : 0) + gap * (3 + turn.tools.length)) * this.zoom
-    ctx.fillStyle = C.pipe + '60'
-    ctx.strokeStyle = C.pipeEdge
+    ctx.fillStyle = 'rgba(22, 27, 34, 0.85)'
+    ctx.strokeStyle = C.pipeEdge + '90'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.roundRect(px - 6, py - 6, pw + 12, totalH + 12, 10)
+    ctx.fill()
+    ctx.stroke()
+    // 顶部装饰线（高光）
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.roundRect(px - 4, py - 4, pw + 8, totalH + 8, 8)
-    ctx.fill()
+    ctx.moveTo(px + 4, py - 5)
+    ctx.lineTo(px + pw - 4, py - 5)
     ctx.stroke()
 
     // ═══ 1. 用户节点（顶部，粉红）═══
@@ -299,13 +330,27 @@ export class PipelineRenderer {
     ctx.beginPath(); ctx.roundRect(px, py, pw, uh, 6); ctx.fill(); ctx.stroke()
     // 文字
     ctx.fillStyle = C.user
-    ctx.font = `bold ${13 * this.zoom}px -apple-system, sans-serif`
+    ctx.font = `bold ${16 * this.zoom}px -apple-system, sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText('👤', px + pw / 2 - turn.userText.length * 4 * this.zoom, py + uh / 2)
     ctx.fillStyle = C.text
-    ctx.font = `${11 * this.zoom}px -apple-system, sans-serif`
-    ctx.fillText(turn.userText, px + pw / 2 + 10 * this.zoom, py + uh / 2)
+    ctx.font = `${14 * this.zoom}px -apple-system, sans-serif`
+    ctx.textAlign = 'left'
+    ctx.fillText(turn.userText, px + pw / 2 + 10 * this.zoom, py + uh * 0.38)
+    // 副标签（回合编号）
+    ctx.fillStyle = C.textDim
+    ctx.font = `${10 * this.zoom}px monospace`
+    ctx.fillText(`Turn ${turn.turnId}`, px + pw / 2 + 10 * this.zoom, py + uh * 0.72)
     py += uh + gap
+    // 分隔线
+    if (this.zoom > 0.5) {
+      ctx.strokeStyle = C.pipeEdge + '40'
+      ctx.lineWidth = 0.5
+      ctx.beginPath()
+      ctx.moveTo(px + 20 * this.zoom, py - gap * 0.5)
+      ctx.lineTo(px + pw - 20 * this.zoom, py - gap * 0.5)
+      ctx.stroke()
+    }
 
     // ═══ 2. 思考节点（中上，金色，最大）═══
     const th = THINK_H * this.zoom
@@ -317,7 +362,7 @@ export class PipelineRenderer {
     ctx.lineWidth = 1.5
     ctx.beginPath(); ctx.roundRect(px, py, pw, th, 6); ctx.fill(); ctx.stroke()
     // 大齿轮 + 反向小齿轮（Anatomy 咬合感）
-    const gearR = 18 * this.zoom
+    const gearR = 26 * this.zoom
     const gx = px + pw * 0.38, gy = py + th * 0.42
     // 大齿轮
     ctx.save(); ctx.translate(gx, gy); ctx.rotate(now / 1200)
@@ -350,8 +395,17 @@ export class PipelineRenderer {
     ctx.restore()
     // 标签
     ctx.fillStyle = C.think
-    ctx.font = `${10 * this.zoom}px -apple-system, sans-serif`
-    ctx.fillText('推理', gx, py + th * 0.85)
+    ctx.font = `${14 * this.zoom}px -apple-system, sans-serif`
+    ctx.fillText('推理', px + pw * 0.15, py + th * 0.3)
+    // 策略描述
+    ctx.fillStyle = C.textDim
+    ctx.font = `${11 * this.zoom}px -apple-system, sans-serif`
+    const stepCount = turn.tools.length
+    ctx.fillText(`${stepCount} 步 · ${turn.thinkSteps.length} 次决策`, px + pw * 0.15, py + th * 0.55)
+    if (turn.finalText) {
+      ctx.fillStyle = C.done + '80'
+      ctx.fillText(turn.finalText, px + pw * 0.15, py + th * 0.78)
+    }
     py += th + gap
 
     // ═══ 3. 工具节点序列（垂直排列）═══
@@ -362,19 +416,28 @@ export class PipelineRenderer {
       ctx.fillStyle = toolColor + '15'
       ctx.strokeStyle = toolColor + '50'
       ctx.lineWidth = 1
-      ctx.beginPath(); ctx.roundRect(px + 10 * this.zoom, py, pw - 20 * this.zoom, toolH, 4); ctx.fill(); ctx.stroke()
+      ctx.beginPath(); ctx.roundRect(px + 16 * this.zoom, py, pw - 32 * this.zoom, toolH, 6); ctx.fill(); ctx.stroke()
       // 工具图标
-      ctx.font = `${14 * this.zoom}px sans-serif`
+      ctx.font = `${18 * this.zoom}px sans-serif`
       ctx.textAlign = 'left'
-      ctx.fillText(toolIcon(tool.name), px + 18 * this.zoom, py + toolH / 2)
+      ctx.fillText(toolIcon(tool.name), px + 24 * this.zoom, py + toolH / 2)
       // 工具名
-      ctx.fillStyle = C.textDim
-      ctx.font = `${10 * this.zoom}px monospace`
-      ctx.fillText(tool.name, px + 38 * this.zoom, py + toolH / 2)
+      // 名称（第一行，稍大）
+      ctx.fillStyle = C.text
+      ctx.font = `${13 * this.zoom}px ui-monospace, monospace`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
+      ctx.fillText(tool.name, px + 50 * this.zoom, py + toolH * 0.38)
+      // 描述（第二行，更小更淡）
+      if (tool.desc) {
+        ctx.fillStyle = C.textDim + '90'
+        ctx.font = `${10 * this.zoom}px -apple-system, sans-serif`
+        ctx.fillText(tool.desc, px + 50 * this.zoom, py + toolH * 0.72)
+      }
       // 状态指示灯（圆形，非文字符号）
       const statusColor = tool.ok ? C.done : C.error
       const lightR = 3.5 * this.zoom
-      const lightX = px + pw - 30 * this.zoom
+      const lightX = px + pw - 36 * this.zoom
       const lightY = py + toolH / 2
       if (!tool.ok) {
         // 失败：闪烁
@@ -387,13 +450,18 @@ export class PipelineRenderer {
       // 光晕
       ctx.fillStyle = statusColor + '20'
       ctx.beginPath(); ctx.arc(lightX, lightY, lightR * 1.8, 0, Math.PI * 2); ctx.fill()
-      // 耗时（等宽字体，右对齐）
+      // 耗时（右对齐，第二行位置）
       if (tool.dur > 0) {
         ctx.fillStyle = C.textDim
-        ctx.font = `${9 * this.zoom}px monospace`
+        ctx.font = `${10 * this.zoom}px monospace`
         ctx.textAlign = 'right'
+        ctx.textBaseline = 'alphabetic'
         const durText = tool.dur > 1000 ? `${(tool.dur / 1000).toFixed(1)}s` : `${tool.dur}ms`
-        ctx.fillText(durText, px + pw - 40 * this.zoom, py + toolH / 2)
+        ctx.fillText(durText, lightX - 10 * this.zoom, py + toolH * 0.72)
+        // 状态文字（第一行）
+        ctx.fillStyle = statusColor + '90'
+        ctx.font = `${9 * this.zoom}px sans-serif`
+        ctx.fillText(tool.ok ? '成功' : '失败', lightX - 10 * this.zoom, py + toolH * 0.38)
       }
       py += toolH + gap * 0.5
     }
@@ -407,9 +475,13 @@ export class PipelineRenderer {
       ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.roundRect(px, py, pw, dh, 6); ctx.fill(); ctx.stroke()
       ctx.fillStyle = C.done
-      ctx.font = `${12 * this.zoom}px sans-serif`
+      ctx.font = `${15 * this.zoom}px sans-serif`
       ctx.textAlign = 'center'
-      ctx.fillText(`✅ ${turn.finalText}`, px + pw / 2, py + dh / 2)
+      ctx.fillText(`✅ ${turn.finalText}`, px + pw / 2, py + dh * 0.42)
+      // 完成时间戳
+      ctx.fillStyle = C.done + '60'
+      ctx.font = `${10 * this.zoom}px monospace`
+      ctx.fillText(new Date().toLocaleTimeString(), px + pw / 2, py + dh * 0.75)
     }
   }
 
@@ -437,7 +509,7 @@ export class PipelineRenderer {
     const bar1H = 8
     // 标签
     ctx.fillStyle = C.textDim
-    ctx.font = '9px monospace'
+    ctx.font = '10px monospace'
     ctx.textAlign = 'left'
     ctx.fillText('Context', barX + 10, bar1Y - 2)
     // 进度条
@@ -455,7 +527,7 @@ export class PipelineRenderer {
     if (this.data.totalTokens > 0) {
       const costCNY = this.data.totalTokens * 0.0000014 // 假设 1.4 CNY/M tokens
       ctx.fillStyle = C.textDim + '90'
-      ctx.font = '8px monospace'
+      ctx.font = '9px monospace'
       ctx.textAlign = 'right'
       ctx.fillText(`≈ ¥${costCNY.toFixed(4)}`, barX + barW - 8, tokenY + bar1H + 14)
     }
@@ -481,7 +553,7 @@ export class PipelineRenderer {
 
     // 标签
     ctx.fillStyle = C.textDim + '80'
-    ctx.font = '8px monospace'
+    ctx.font = '9px monospace'
     ctx.textAlign = 'left'
     ctx.fillText('⏱', barX - 15, barY + 4)
 
@@ -517,7 +589,7 @@ export class PipelineRenderer {
     }
     // 总时长
     ctx.fillStyle = C.textDim
-    ctx.font = '8px monospace'
+    ctx.font = '9px monospace'
     ctx.textAlign = 'right'
     ctx.fillText(`总 ${totalTime}ms`, barX + barW + 5, barY + 6)
   }
