@@ -33,6 +33,9 @@ interface BattleUnit {
   category: string
   ok: boolean
   dur: number
+  /** 对应 assistant.tool_calls 的 id —— 工具结果按 id 精确回填（同名多次调用不串位） */
+  callId?: string
+  matched?: boolean
   mesh?: THREE.Object3D
 }
 
@@ -75,6 +78,17 @@ function getUnitSpec(name: string) {
    渲染器
    ═════════════════════════════════════════════════ */
 
+/** 递归释放 subtree 的 geometry / material（GPU 内存） */
+function disposeObject3D(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh
+    if (mesh.geometry) mesh.geometry.dispose()
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+    else if (mat) mat.dispose()
+  })
+}
+
 export class BattlefieldRenderer {
   private canvas: HTMLCanvasElement
   private renderer: THREE.WebGLRenderer
@@ -85,6 +99,8 @@ export class BattlefieldRenderer {
   // 建筑（STATION）
   private buildings: THREE.Group[] = []
   private buildingData: Map<string, { x: number; z: number; group: THREE.Group }> = new Map()
+  /** 上次 setData 的数据签名 —— 流式期间 rev 每帧变化，结构未变时跳过全量重建 */
+  private lastDataSig = ''
 
   // 相机控制
   private isPanning = false
@@ -92,10 +108,6 @@ export class BattlefieldRenderer {
   private camTarget = new THREE.Vector3(0, 0, 0)
   private camDistance = 30
   private camAngle = Math.PI / 4 // 45° 俯视
-
-  // 拖拽建筑
-  private raycaster = new THREE.Raycaster()
-  private mouse = new THREE.Vector2()
 
   // 动画时间
   private clock = new THREE.Clock()
@@ -113,6 +125,8 @@ export class BattlefieldRenderer {
 
   destroy() {
     cancelAnimationFrame(this.animId)
+    this.unbindEvents()
+    this.clearBuildings()
     this.renderer.dispose()
   }
 
@@ -168,13 +182,14 @@ export class BattlefieldRenderer {
     center.position.y = 0.02
     this.scene.add(center)
 
-    // 四角方位标记
-    for (const [mx, mz, label] of [[-50, -50, 'NW'], [50, -50, 'NE'], [-50, 50, 'SW'], [50, 50, 'SE']]) {
-      const markGeo = new THREE.RingGeometry(1.5, 1.8, 16)
-      const markMat = new THREE.MeshStandardMaterial({
-        color: 0x30363D, emissive: 0x30363D, emissiveIntensity: 0.5,
-        side: THREE.DoubleSide,
-      })
+    // 四角方位标记（几何/材质循环不变，提出共享）
+    const markGeo = new THREE.RingGeometry(1.5, 1.8, 16)
+    const markMat = new THREE.MeshStandardMaterial({
+      color: 0x30363D, emissive: 0x30363D, emissiveIntensity: 0.5,
+      side: THREE.DoubleSide,
+    })
+    const corners: [number, number][] = [[-50, -50], [50, -50], [-50, 50], [50, 50]]
+    for (const [mx, mz] of corners) {
       const mark = new THREE.Mesh(markGeo, markMat)
       mark.rotation.x = -Math.PI / 2
       mark.position.set(mx, 0.02, mz)
@@ -211,17 +226,29 @@ export class BattlefieldRenderer {
      ════════════════════════════════════════════════ */
 
   setData(data: BattlefieldData) {
-    this.data = data
+    // 流式期间快照 rev 每帧变化，但战场结构（回合数/单位/状态）未必变 —— 签名不变则跳过重建
+    const sig = `${data.turns.length}|${data.turns
+      .map((t) => t.units.map((u) => `${u.name}:${u.ok ? 1 : 0}:${Math.round(u.dur)}`).join(','))
+      .join('|')}|${data.totalTokens}|${data.contextUsed}`
+    if (sig === this.lastDataSig) return
+    this.lastDataSig = sig
     this.clearBuildings()
     this.buildBattlefield(data)
   }
 
+  /** 拆除全部建筑与管道：先递归释放 GPU 资源再移出场景（防内存无界增长） */
   private clearBuildings() {
     for (const b of this.buildings) {
+      disposeObject3D(b)
       this.scene.remove(b)
     }
     this.buildings = []
     this.buildingData.clear()
+    for (const beam of this.connectionBeams) {
+      disposeObject3D(beam)
+      this.scene.remove(beam)
+    }
+    this.connectionBeams = []
   }
 
   /* ════════════════════════════════════════════════
@@ -324,12 +351,12 @@ export class BattlefieldRenderer {
     tower3.position.y = 4.9
     group.add(tower3)
 
-    // 塔楼窗户（发光竖条，像科幻建筑）
+    // 塔楼窗户（发光竖条，像科幻建筑；几何/材质循环不变，提出共享）
+    const winGeo = new THREE.BoxGeometry(0.15, 0.8, 0.02)
+    const winMat = new THREE.MeshStandardMaterial({
+      color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.8,
+    })
     for (let wi = 0; wi < 3; wi++) {
-      const winGeo = new THREE.BoxGeometry(0.15, 0.8, 0.02)
-      const winMat = new THREE.MeshStandardMaterial({
-        color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.8,
-      })
       const win = new THREE.Mesh(winGeo, winMat)
       win.position.set(-1 + wi * 1, 1.6, 1.78)
       group.add(win)
@@ -347,29 +374,29 @@ export class BattlefieldRenderer {
     antenna.position.y = 6.2
     group.add(antenna)
 
-    // 天线顶部小球
+    // 天线顶部小球（置于状态灯上方，避免被灯球包裹而不可见）
     const antBallGeo = new THREE.SphereGeometry(0.08, 8, 8)
     const antBallMat = new THREE.MeshStandardMaterial({
       color: 0xFF6B9D, emissive: 0xFF6B9D, emissiveIntensity: 1.0,
     })
     const antBall = new THREE.Mesh(antBallGeo, antBallMat)
-    antBall.position.y = 7
+    antBall.position.y = 7.5
     group.add(antBall)
 
-    // 建筑侧面装饰柱（四角）
+    // 建筑侧面装饰柱（四角；几何/材质循环不变，提出共享）
+    const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 3.2, 6)
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: 0x30363D, metalness: 0.7, roughness: 0.3,
+    })
+    const capGeo = new THREE.SphereGeometry(0.18, 8, 8)
+    const capMat = new THREE.MeshStandardMaterial({
+      color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.5,
+    })
     for (const [dx, dz] of [[-3.2, -2.7], [3.2, -2.7], [-3.2, 2.7], [3.2, 2.7]]) {
-      const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 3.2, 6)
-      const pillarMat = new THREE.MeshStandardMaterial({
-        color: 0x30363D, metalness: 0.7, roughness: 0.3,
-      })
       const pillar = new THREE.Mesh(pillarGeo, pillarMat)
       pillar.position.set(dx, 1.8, dz)
       group.add(pillar)
       // 柱子顶部发光帽
-      const capGeo = new THREE.SphereGeometry(0.18, 8, 8)
-      const capMat = new THREE.MeshStandardMaterial({
-        color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.5,
-      })
       const cap = new THREE.Mesh(capGeo, capMat)
       cap.position.set(dx, 3.5, dz)
       group.add(cap)
@@ -476,9 +503,12 @@ export class BattlefieldRenderer {
       const ufx = (col - (perRow - 1) / 2) * unitSpacing
       const ufz = 4 + row * unitSpacing // 建筑前方
 
-      // 创建单位 mesh
+      // 创建单位 mesh；悬浮基准高度按体型抬高（保证底盘/光环不没入地面），
+      // 存入 userData.baseY 供动画循环以"基准 + 浮动"更新（不再每帧硬编码覆盖）
       const unitMesh = this.createUnitMesh(unit, spec)
-      unitMesh.position.set(ufx, 0.5, ufz)
+      const baseY = Math.max(0.3, spec.size * 0.8 + 0.1)
+      unitMesh.position.set(ufx, baseY, ufz)
+      unitMesh.userData.baseY = baseY
       building.add(unitMesh)
     }
 
@@ -602,8 +632,6 @@ export class BattlefieldRenderer {
   }
 
   private updateCamera() {
-    const t = this.clock.getElapsedTime()
-    void t // used in animations below
     const x = this.camTarget.x + Math.sin(this.camAngle) * this.camDistance
     const z = this.camTarget.z + Math.cos(this.camAngle) * this.camDistance
     const y = this.camTarget.y + this.camDistance * 0.7
@@ -672,9 +700,7 @@ export class BattlefieldRenderer {
      ════════════════════════════════════════════════ */
 
   private loop = () => {
-    const dt = this.clock.getDelta()
     const t = this.clock.getElapsedTime()
-    void t // used in animations below
 
     // 建筑动画
     for (const building of this.buildings) {
@@ -695,10 +721,10 @@ export class BattlefieldRenderer {
         }
       }
 
-      // 单位微动（编队中的单位轻微浮动）
+      // 单位微动（编队中的单位轻微浮动；基准高度来自 userData.baseY）
       building.children.forEach((child, idx) => {
         if (child.name.startsWith('unit_')) {
-          child.position.y = 0.3 + Math.sin(t * 3 + idx * 0.5) * 0.05
+          child.position.y = (child.userData.baseY ?? 0.3) + Math.sin(t * 3 + idx * 0.5) * 0.05
           child.rotation.y = t * 0.3 + idx
         }
       })
@@ -759,16 +785,23 @@ export function parseBattlefieldData(
             name: tc.name || 'unknown',
             category: TOOL_CAT[tc.name] ?? tc.name,
             ok: true, dur: 0,
+            callId: tc.id,
+            matched: false,
           })
         }
       } else if (msg.content) {
         current.finalText = msg.content.slice(0, 30)
       }
     } else if (msg.role === 'tool' && current) {
-      const u = current.units.find(u2 => u2.name === (msg.name || 'unknown') && !u2.dur)
+      // 按 tool_call_id 精确回填（dur=0 是合法耗时，不能用作"未回填"标记；
+      // 否则同名多次调用时后续结果会覆盖前面单位的状态）
+      const u =
+        current.units.find(u2 => !u2.matched && u2.callId && u2.callId === msg.tool_call_id) ??
+        current.units.find(u2 => !u2.matched && u2.name === (msg.name || 'unknown'))
       if (u) {
         u.ok = msg.toolOk !== false
         u.dur = msg.durationMs ?? 0
+        u.matched = true
       }
     }
   }

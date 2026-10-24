@@ -171,12 +171,6 @@ export class PipelineRenderer {
     this.offsetY = fit.offsetY
   }
 
-  
-
-  private w2s(wx: number, wy: number): [number, number] {
-    return [wx * this.zoom + this.offsetX, wy * this.zoom + this.offsetY]
-  }
-
   private resize() {
     const p = this.canvas.parentElement
     if (!p) return
