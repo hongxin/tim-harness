@@ -129,6 +129,8 @@ export class PipelineRenderer {
     dragged: boolean          // 是否被用户拖拽过
   }>()
   private draggingId: string | null = null
+  /** 锚点屏幕位置（render 时更新，连接线使用同一数据源） */
+  private anchorPos = new Map<string, { inX: number; inY: number; outX: number; outY: number }>
   private panStart = { x: 0, y: 0 }
   private expandLevel = new Map<string, number>()
   private hitItems: Array<{ key: string; x: number; y: number; w: number; h: number }> = []
@@ -380,16 +382,46 @@ export class PipelineRenderer {
       ctx.beginPath(); ctx.arc(px, sy1, 3, 0, Math.PI * 2); ctx.fill()
     }
 
-    // ═══ 相邻 STATION 连接线（正交布线：直线 + 直角转弯）═══
+    // ═══ 统一绘制锚点（与连接线同一坐标源）═══
+    for (let ti = 0; ti < turns.length; ti++) {
+      const node = this.physNodes.get(String(turns[ti].turnId))
+      if (!node) continue
+      
+      // 计算锚点的屏幕坐标（与 drawPipeline 的 translate 一致）
+      const pipeX = node.x
+      const pipeYOffset = node.y
+      // drawPipeline 内部: px = pipeX * zoom + offsetX, py = offsetY
+      // 加上 translate(0, pipeYOffset)
+      const px = pipeX * this.zoom + this.offsetX
+      const py = this.offsetY + pipeYOffset // 实际屏幕 Y
+      const pw = this.pipeW * this.zoom
+      const anchorY = py + 20 * this.zoom // 锚点在顶部往下 20px
+
+      // 存储锚点位置（连接线用）
+      this.anchorPos.set(String(turns[ti].turnId), {
+        inX: px, inY: anchorY,      // 输入：左边缘
+        outX: px + pw, outY: anchorY // 输出：右边缘
+      })
+
+      // 绘制锚点
+      const hasPrev = ti > 0
+      const hasNext = ti < turns.length - 1
+      this.drawAnchor(ctx, px, anchorY, 'input', hasPrev, now)
+      this.drawAnchor(ctx, px + pw, anchorY, 'output', hasNext, now)
+    }
+
+    // ═══ 相邻 STATION 连接线（从锚点到锚点）═══
     for (let ti = 0; ti < turns.length - 1; ti++) {
       const nodeA = this.physNodes.get(String(turns[ti].turnId))
       const nodeB = this.physNodes.get(String(turns[ti + 1].turnId))
       if (!nodeA || !nodeB) continue
 
-      // 连接点：A 的输出锚点 → B 的输入锚点
-      const pwA = this.pipeW * this.zoom
-      const [ax, ay] = this.w2s(nodeA.x + pwA / 2, nodeA.y + 20 * this.zoom)
-      const [bx, by] = this.w2s(nodeB.x - pwA / 2, nodeB.y + 20 * this.zoom)
+      // 连接点：从 anchorPos 获取（与锚点绘制同一数据源）
+      const anchorsA = this.anchorPos.get(String(turns[ti].turnId))
+      const anchorsB = this.anchorPos.get(String(turns[ti + 1].turnId))
+      if (!anchorsA || !anchorsB) continue
+      const ax = anchorsA.outX, ay = anchorsA.outY // A 的输出锚点
+      const bx = anchorsB.inX, by = anchorsB.inY   // B 的输入锚点
 
       const dx = bx - ax
       const dy = by - ay
@@ -649,14 +681,7 @@ export class PipelineRenderer {
       drawTextSafe(ctx, `✅ ${turn.finalText}`, px + pw / 2, py + dh / 2, pw - 20, 'center')
     }
 
-    // ═══ 绘制锚点（输入/输出端口，像 UE 蓝图）═══
-    const hasPrev = turn.turnId > 1
-    const hasNext = this.data ? turn.turnId < this.data.turns.length : false
-    // 输入锚点：左上角（面板边缘处凸起）
-    this.drawAnchor(ctx, px, py + 20 * this.zoom, 'input', hasPrev, now)
-    // 输出锚点：右上角（面板边缘处凸起）
-    this.drawAnchor(ctx, px + pw, py + 20 * this.zoom, 'output', hasNext, now)
-  }
+      }
 
   
   /* ═══ 热力图模式（>6 回合的自适应布局）═══
@@ -910,17 +935,7 @@ export class PipelineRenderer {
     ctx.restore()
   }
 
-  /** 获取 STATION 的锚点屏幕坐标 */
-  private getAnchors(turnId: string): { input: [number, number]; output: [number, number] } | null {
-    const node = this.physNodes.get(turnId)
-    if (!node) return null
-    const pw = this.pipeW * this.zoom
-    // 输入：左上角（面板顶部往下 20px）
-    const [ix, iy] = this.w2s(node.x - pw / 2, node.y + 20 * this.zoom)
-    // 输出：右上角（面板顶部往下 20px）
-    const [ox, oy] = this.w2s(node.x + pw / 2, node.y + 20 * this.zoom)
-    return { input: [ix, iy], output: [ox, oy] }
-  }
+  
 
   private drawFooter(ctx: CanvasRenderingContext2D, now: number) {
     if (!this.data) return
