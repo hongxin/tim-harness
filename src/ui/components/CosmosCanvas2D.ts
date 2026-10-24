@@ -1,5 +1,4 @@
 import { drawTurnStackNode } from './TurnStackV2'
-import { drawStackEffect } from './TurnStack'
 import { drawMachinePartV2 as drawMachinePart, drawExternalLabel } from './MachinePartsV2'
 import { drawStatusLight, drawConveyorBelt, getToolIcon } from './MachineParts'
 /**
@@ -153,9 +152,7 @@ interface Star{x:number;y:number;size:number;layer:number;alpha:number;twinkle:b
 interface P{edgeId:string;t:number}
 export class CosmosCanvas2D{private c:HTMLCanvasElement;private x:CanvasRenderingContext2D;private w=0;private h=0;private dpr=1;private ai=0;private sim:SimS={nodes:new Map(),edges:[],clusters:new Map(),cooled:false};private st:Star[]=[];private pt:P[]=[];private t0=performance.now();private z=1;private ox=0;private oy=0;private hi:string|null=null
   private hoverNeighbors:Set<string>=new Set();private si:string|null=null;private ft:number|null=null;private ro:ResizeObserver;private os:((n:CosmosNode2D|null)=>void)|null=null;private oc:((c:string|null)=>void)|null=null;private cam:{t:number;d:number;fx:number;fy:number;fz:number;tx:number;ty:number;tz:number}|null=null;private pan=false;private dn:string|null=null
-  private _expandedStacks:Set<string>=new Set()
-  private _stackInfo:Map<number,number>=new Map()
-  private _expandedTurn:number=-1 // turnId → step count
+  private _expandedStacks:Set<string>=new Set() // V2: 展开的 turn-stack 节点 id
   // 主题配色（从 CSS 变量读取，随主题切换更新）
   private theme = this.defaultTheme()
   private defaultTheme() {
@@ -209,12 +206,6 @@ destroy(){cancelAnimationFrame(this.ai);this.ro.disconnect();this.ue()}
 setOnNodeSelect(cb:(n:CosmosNode2D|null)=>void){this.os=cb}
 setOnCaptionUpdate(cb:(c:string|null)=>void){this.oc=cb}
 setNodes(ns:CosmosNode2D[],es:CosmosEdge2D[],_cl:TurnCluster[]){const ni=new Set(ns.map(n=>n.id));for(const id of this.sim.nodes.keys())if(!ni.has(id))this.sim.nodes.delete(id);for(const n of ns){const o=this.sim.nodes.get(n.id);if(o){o.content=n.content;o.isError=n.isError;o.durationMs=n.durationMs;o.hue=n.hue;o.toolName=n.toolName;o.kind=n.kind;Object.assign(o,n)}else{this.sim.nodes.set(n.id,{...n});this.sim.cooled=false}}this.sim.edges=es;this.sim.cooled=false;const ei=new Set(es.map(e=>e.id));this.pt=this.pt.filter(p=>ei.has(p.edgeId));for(const e of es)if(!this.pt.some(p=>p.edgeId===e.id))this.pt.push({edgeId:e.id,t:Math.random()})
-    // 检测多步骤回合（同 turnId 的 assistant 节点数 > 1）
-    const turnCount=new Map<number,number>()
-    for(const n of this.sim.nodes.values()){
-      if(n.kind==='assistant')turnCount.set(n.turnId,(turnCount.get(n.turnId)||0)+1)
-    }
-    this._stackInfo=turnCount
   }
 flyToTurn(t:number){const c=this.sim.clusters.get(t);if(!c)return;this.ft=t;this.ac(c.centerX,c.centerY,Math.max(1.4,200/Math.max(c.radius,60)));this.oc?.(c.summary)}
 resetView(){this.ft=null;this.oc?.(null);this.af()}
@@ -245,13 +236,53 @@ private s2w(sx:number,sy:number):[number,number]{return[(sx-this.w/2)/this.z-thi
 private be(){this.c.addEventListener('wheel',this.ow);this.c.addEventListener('pointerdown',this.od);this.c.addEventListener('pointermove',this.om);this.c.addEventListener('pointerup',this.ou);this.c.addEventListener('pointerleave',this.ou)}
 private ue(){this.c.removeEventListener('wheel',this.ow);this.c.removeEventListener('pointerdown',this.od);this.c.removeEventListener('pointermove',this.om);this.c.removeEventListener('pointerup',this.ou);this.c.removeEventListener('pointerleave',this.ou)}
 private ow=(e:WheelEvent)=>{e.preventDefault();this.cam=null;this.z=Math.max(.1,Math.min(5,this.z*(e.deltaY>0?.9:1.1)))}
-private od=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);for(const n of[...this.sim.nodes.values()].reverse()){const dx=wx-n.x,dy=wy-n.y;if(dx*dx+dy*dy<=n.radius*n.radius){this.si=n.id;this.os?.(n)
-      // 点击多步骤 assistant → 展开/收拢提示（视觉反馈）
-      if(n.kind==='assistant'){
-        const cnt=this._stackInfo.get(n.turnId)||0
-        if(cnt>1){this._expandedTurn=n.turnId===this._expandedTurn?-1:n.turnId}
+private od=(e:PointerEvent)=>{
+    const r=this.c.getBoundingClientRect()
+    const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top)
+    
+    // === 命中检测：从最上层节点开始 ===
+    for(const n of[...this.sim.nodes.values()].reverse()){
+      const dx=wx-n.x,dy=wy-n.y
+      if(dx*dx+dy*dy<=n.radius*n.radius){
+        this.si=n.id
+        this.os?.(n)
+        
+        // === turn-stack 节点：切换展开/收拢 ===
+        if((n as any).kind==='turn-stack'){
+          if(this._expandedStacks.has(n.id)){
+            this._expandedStacks.delete(n.id)
+          }else{
+            this._expandedStacks.add(n.id)
+          }
+          return // 不启动拖拽（避免点击后误拖）
+        }
+        
+        // === 普通节点：选中 + 准备拖拽 ===
+        this.dn=n.id
+        n.pinned=true
+        n.vx=0;n.vy=0
+        this.sim.cooled=false
+        return
       }
-      this.dn=n.id;n.pinned=true;n.vx=0;n.vy=0;this.sim.cooled=false;return}}for(const c of this.sim.clusters.values()){const dx=wx-c.centerX,dy=wy-c.centerY;if(dx*dx+dy*dy<=c.radius*c.radius){this.flyToTurn(c.turnId);return}}this.si=null;this.ft=null;this.os?.(null);this.oc?.(null);this.pan=true;this.ps={x:e.clientX,y:e.clientY}}
+    }
+    
+    // === 未命中节点：检查回合聚集区 → 相机飞行 ===
+    for(const c of this.sim.clusters.values()){
+      const dx=wx-c.centerX,dy=wy-c.centerY
+      if(dx*dx+dy*dy<=c.radius*c.radius){
+        this.flyToTurn(c.turnId)
+        return
+      }
+    }
+    
+    // === 空白处：取消选择 + 开始平移 ===
+    this.si=null
+    this.ft=null
+    this.os?.(null)
+    this.oc?.(null)
+    this.pan=true
+    this.ps={x:e.clientX,y:e.clientY}
+  }
 private om=(e:PointerEvent)=>{const r=this.c.getBoundingClientRect();if(this.dn){const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);const n=this.sim.nodes.get(this.dn);if(n){n.x=wx;n.y=wy;n.vx=0;n.vy=0;n.dragged=true;this.sim.cooled=false}return}
 if(this.pan){this.cam=null;this.ox+=(e.clientX-this.ps.x)/this.z;this.oy+=(e.clientY-this.ps.y)/this.z;this.ps={x:e.clientX,y:e.clientY};return}const[wx,wy]=this.s2w(e.clientX-r.left,e.clientY-r.top);this.hi=null;this.hoverNeighbors.clear();for(const n of this.sim.nodes.values()){const dx=wx-n.x,dy=wy-n.y;if(dx*dx+dy*dy<=n.radius*n.radius){this.hi=n.id;break}}this.c.style.cursor=this.hi?'pointer':'grab'}
 private ou=()=>{if(this.dn){const n=this.sim.nodes.get(this.dn);if(n)n.pinned=false;this.dn=null}this.pan=false;this.hi=null;this.hoverNeighbors.clear()}
@@ -368,12 +399,7 @@ if(bi<1&&isF){const ab=bi;for(let ap=0;ap<4;ap++){const aA=ap/4*Math.PI*2+bi*2;c
   drawStatusLight(ctx, sx + er * 0.6, sy - er * 0.6, lightStatus, now)
 }else if(false){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=this.theme.dark?`hsla(${hue},${sa}%,${li+20}%,.4)`:`hsla(${hue},${sa}%,${li-10}%,.5)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
 // Running gear (Anatomy metaphor)
-if(n.isRunning&&isF){const gr2=er*1.7;const teeth=8;const rot=now/250;ctx.save();ctx.translate(sx,sy);ctx.rotate(rot);for(let t2=0;t2<teeth;t2++){const ta=t2/teeth*Math.PI*2;ctx.beginPath();ctx.moveTo(Math.cos(ta)*er*1.15,Math.sin(ta)*er*1.15);ctx.lineTo(Math.cos(ta)*gr2,Math.sin(ta)*gr2);ctx.strokeStyle=this.theme.glow(hue,80,.5*al);ctx.lineWidth=2;ctx.stroke()}ctx.beginPath();ctx.arc(0,0,er*1.15,0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,80,.3*al);ctx.lineWidth=1.5;ctx.stroke();ctx.restore()}// TurnStack 堆叠效果
-    const _cnt=this._stackInfo.get(n.turnId)||0
-    if(_cnt>1&&n.kind==='assistant'){
-            drawStackEffect(ctx,sx,sy,er,_cnt,hue,this.theme.dark,this.z)
-    }
-if(isS){ctx.beginPath();ctx.arc(sx,sy,er+3,0,Math.PI*2);ctx.strokeStyle=this.theme.selectRing(hue);ctx.lineWidth=2;ctx.stroke()}
+if(n.isRunning&&isF){const gr2=er*1.7;const teeth=8;const rot=now/250;ctx.save();ctx.translate(sx,sy);ctx.rotate(rot);for(let t2=0;t2<teeth;t2++){const ta=t2/teeth*Math.PI*2;ctx.beginPath();ctx.moveTo(Math.cos(ta)*er*1.15,Math.sin(ta)*er*1.15);ctx.lineTo(Math.cos(ta)*gr2,Math.sin(ta)*gr2);ctx.strokeStyle=this.theme.glow(hue,80,.5*al);ctx.lineWidth=2;ctx.stroke()}ctx.beginPath();ctx.arc(0,0,er*1.15,0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,80,.3*al);ctx.lineWidth=1.5;ctx.stroke();ctx.restore()}if(isS){ctx.beginPath();ctx.arc(sx,sy,er+3,0,Math.PI*2);ctx.strokeStyle=this.theme.selectRing(hue);ctx.lineWidth=2;ctx.stroke()}
 // 用户拖拽过的节点：虚线圆环标记（地图上的"用户标记"）
 if(n.dragged){ctx.beginPath();ctx.arc(sx,sy,er+5,0,Math.PI*2);ctx.strokeStyle=this.theme.dark?'hsla(45,60%,60%,.3)':'hsla(45,60%,40%,.4)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([])}
 if(n.isError){ctx.fillStyle=`hsla(0,90%,60%,${.9*al})`;ctx.font=`bold ${Math.max(9,er*.5)}px sans-serif`;ctx.fillText('✗',sx+er*.5,sy-er*.5)}
