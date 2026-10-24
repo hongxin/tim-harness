@@ -1,3 +1,4 @@
+import { drawPanel, drawGauge, drawRail } from './PhysicalParts'
 /**
  * PipelineRenderer —— 垂直管道渲染器（完全重新设计）
  *
@@ -302,32 +303,22 @@ export class PipelineRenderer {
     let py = this.offsetY
     const gap = GAP_V * this.zoom
 
-    // 管道背景（整体轮廓）
+    // 底座面板（物理感：整个回合坐在这个底座上）
     const totalH = (USER_H + THINK_H + turn.tools.length * TOOL_H + (turn.finalText ? DONE_H : 0) + gap * (3 + turn.tools.length)) * this.zoom
-    ctx.fillStyle = 'rgba(22, 27, 34, 0.85)'
-    ctx.strokeStyle = C.pipeEdge + '90'
-    ctx.lineWidth = 1.5
-    ctx.beginPath()
-    ctx.roundRect(px - 6, py - 6, pw + 12, totalH + 12, 10)
-    ctx.fill()
-    ctx.stroke()
-    // 顶部装饰线（高光）
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(px + 4, py - 5)
-    ctx.lineTo(px + pw - 4, py - 5)
-    ctx.stroke()
+    drawPanel(ctx, px - 10, py - 8, pw + 20, totalH + 16, {
+      hue: 220, sat: 15, light: 10, depth: 4 * this.zoom
+    }, now, { screws: true })
+    // 导轨（工具面板沿此导轨排列）
+    if (turn.tools.length > 0) {
+      const railY = py + (USER_H + THINK_H + GAP_V * 2.5) * this.zoom
+      drawRail(ctx, px + 8, railY, px + pw - 8, railY, 210)
+    }
 
     // ═══ 1. 用户节点（顶部，粉红）═══
     const uh = USER_H * this.zoom
-    const userGrad = ctx.createLinearGradient(px, py, px, py + uh)
-    userGrad.addColorStop(0, C.user + '30')
-    userGrad.addColorStop(1, C.user + '15')
-    ctx.fillStyle = userGrad
-    ctx.strokeStyle = C.user + '80'
-    ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.roundRect(px, py, pw, uh, 6); ctx.fill(); ctx.stroke()
+    drawPanel(ctx, px, py, pw, uh, {
+      hue: 340, sat: 70, light: 20, depth: 3 * this.zoom
+    }, now, { screws: true, glowAlpha: 0.05 })
     // 文字
     ctx.fillStyle = C.user
     ctx.font = `bold ${16 * this.zoom}px -apple-system, sans-serif`
@@ -354,13 +345,9 @@ export class PipelineRenderer {
 
     // ═══ 2. 思考节点（中上，金色，最大）═══
     const th = THINK_H * this.zoom
-    const thinkGrad = ctx.createLinearGradient(px, py, px, py + th)
-    thinkGrad.addColorStop(0, C.think + '25')
-    thinkGrad.addColorStop(1, C.think + '10')
-    ctx.fillStyle = thinkGrad
-    ctx.strokeStyle = C.think + '70'
-    ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.roundRect(px, py, pw, th, 6); ctx.fill(); ctx.stroke()
+    drawPanel(ctx, px, py, pw, th, {
+      hue: 45, sat: 90, light: 22, depth: 3 * this.zoom
+    }, now, { screws: true, glowAlpha: 0.08 })
     // 大齿轮 + 反向小齿轮（Anatomy 咬合感）
     const gearR = 26 * this.zoom
     const gx = px + pw * 0.38, gy = py + th * 0.42
@@ -411,12 +398,11 @@ export class PipelineRenderer {
     // ═══ 3. 工具节点序列（垂直排列）═══
     for (const tool of turn.tools) {
       const toolH = TOOL_H * this.zoom
-      const toolColor = tool.ok ? C.tool : C.error
       // 工具行背景
-      ctx.fillStyle = toolColor + '15'
-      ctx.strokeStyle = toolColor + '50'
-      ctx.lineWidth = 1
-      ctx.beginPath(); ctx.roundRect(px + 16 * this.zoom, py, pw - 32 * this.zoom, toolH, 6); ctx.fill(); ctx.stroke()
+      const toolHue = tool.ok ? 190 : 0
+      drawPanel(ctx, px + 16 * this.zoom, py, pw - 32 * this.zoom, toolH, {
+        hue: toolHue, sat: 60, light: 15, depth: 2 * this.zoom
+      }, now, { screws: this.zoom > 0.6 })
       // 工具图标
       ctx.font = `${18 * this.zoom}px sans-serif`
       ctx.textAlign = 'left'
@@ -470,10 +456,9 @@ export class PipelineRenderer {
     // ═══ 4. 完成节点（底部，绿色）═══
     if (turn.finalText) {
       const dh = DONE_H * this.zoom
-      ctx.fillStyle = C.done + '20'
-      ctx.strokeStyle = C.done + '70'
-      ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(px, py, pw, dh, 6); ctx.fill(); ctx.stroke()
+      drawPanel(ctx, px, py, pw, dh, {
+        hue: 140, sat: 80, light: 18, depth: 3 * this.zoom
+      }, now, { screws: true, glowAlpha: 0.1 })
       ctx.fillStyle = C.done
       ctx.font = `${15 * this.zoom}px sans-serif`
       ctx.textAlign = 'center'
@@ -502,24 +487,9 @@ export class PipelineRenderer {
     ctx.lineWidth = 1
     ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 6); ctx.fill(); ctx.stroke()
 
-    // 上下文液位
+    // 上下文仪表（物理仪表盘）
     const ctxRatio = Math.min(this.data.contextUsed / this.data.contextMax, 1)
-    const ctxColor = ctxRatio > 0.8 ? C.gaugeDanger : ctxRatio > 0.6 ? C.gaugeWarn : C.gaugeFill
-    const bar1Y = barY + 12
-    const bar1H = 8
-    // 标签
-    ctx.fillStyle = C.textDim
-    ctx.font = '10px monospace'
-    ctx.textAlign = 'left'
-    ctx.fillText('Context', barX + 10, bar1Y - 2)
-    // 进度条
-    ctx.fillStyle = C.pipeEdge
-    ctx.beginPath(); ctx.roundRect(barX + 70, bar1Y, barW - 180, bar1H, 2); ctx.fill()
-    ctx.fillStyle = ctxColor + '80'
-    ctx.beginPath(); ctx.roundRect(barX + 70, bar1Y, (barW - 180) * ctxRatio, bar1H, 2); ctx.fill()
-    // 百分比
-    ctx.fillStyle = ctxColor
-    ctx.fillText(`${Math.round(ctxRatio * 100)}%`, barX + barW - 100, bar1Y + bar1H - 1)
+    drawGauge(ctx, barX + 40, barY + 35, 24, Math.round(ctxRatio * 100), 100, 'Context', 140, performance.now())
 
     // Token 燃料
     const tokenY = bar1Y + bar1H + 10
