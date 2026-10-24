@@ -9,6 +9,7 @@ import { RightPanel } from './components/RightPanel'
 import { SettingsDialog } from './components/SettingsDialog'
 import { GoalBar, GoalModal } from './components/Goal'
 const CosmosView = React.lazy(() => import('./components/CosmosView2D').then(m => ({ default: m.CosmosView })))
+const MachineView = React.lazy(() => import('./components/MachineView').then(m => ({ default: m.MachineView })))
 import { looksBinary, readFileAsBytes, readFileAsText } from './fileops'
 
 function BootSplash() {
@@ -49,7 +50,7 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
   const [rpWidth, setRpWidth] = useState(loadRightPanelWidth)
   const [dragOver, setDragOver] = useState(false)
   const [goalOpen, setGoalOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<'chat' | 'cosmos'>('chat')
+  const [viewMode, setViewMode] = useState<'chat' | 'cosmos' | 'machine'>('chat')
 
   useEffect(() => {
     if (window.innerWidth < 1100) setRightOpen(false)
@@ -138,13 +139,13 @@ function Workbench({ fsMode }: { fsMode: 'opfs' | 'memory' }) {
           onToggleRight={() => setRightOpen((v) => !v)}
           onOpenGoal={() => setGoalOpen(true)}
           viewMode={viewMode}
-          onToggleView={() => setViewMode((v) => (v === 'chat' ? 'cosmos' : 'chat'))}
+          onToggleView={() => setViewMode((v) => v === 'chat' ? 'cosmos' : v === 'cosmos' ? 'machine' : 'chat')}
         />
         {viewMode === 'chat' ? (
           <ChatView snapshot={snapshot} runtime={runtime} />
         ) : (
-          <Suspense fallback={<div className="cosmos-loading">🌌 加载中…</div>}>
-            <CosmosView snapshot={snapshot} runtime={runtime} />
+          <Suspense fallback={<div className="cosmos-loading">加载中…</div>}>
+            {viewMode === "machine" ? <MachineView snapshot={snapshot} runtime={runtime} /> : <CosmosView snapshot={snapshot} runtime={runtime} />}
           </Suspense>
         )}
         <GoalBar snapshot={snapshot} runtime={runtime} />

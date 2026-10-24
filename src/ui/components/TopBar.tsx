@@ -17,7 +17,7 @@ export function TopBar({
   rightOpen: boolean
   onToggleRight: () => void
   onOpenGoal: () => void
-  viewMode: 'chat' | 'cosmos'
+  viewMode: 'chat' | 'cosmos' | 'machine'
   onToggleView: () => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -60,7 +60,7 @@ export function TopBar({
         <button
           type="button"
           className={`btn-icon ${viewMode === 'cosmos' ? 'on' : ''}`}
-          title={viewMode === 'cosmos' ? '切换回对话视图' : '智能体星图：3D 会话可视化'}
+          title={viewMode === 'chat' ? '智能体星图视图' : viewMode === 'cosmos' ? '装配线视图（Anatomy 风格）' : '切换回对话视图'}
           onClick={onToggleView}
         >
           🌌
