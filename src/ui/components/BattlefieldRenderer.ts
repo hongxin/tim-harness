@@ -81,7 +81,6 @@ export class BattlefieldRenderer {
   private scene: THREE.Scene
   private camera: THREE.PerspectiveCamera
   private animId = 0
-  private data: BattlefieldData | null = null
 
   // 建筑（STATION）
   private buildings: THREE.Group[] = []
@@ -95,7 +94,6 @@ export class BattlefieldRenderer {
   private camAngle = Math.PI / 4 // 45° 俯视
 
   // 拖拽建筑
-  private draggingBuilding: string | null = null
   private raycaster = new THREE.Raycaster()
   private mouse = new THREE.Vector2()
 
@@ -127,7 +125,7 @@ export class BattlefieldRenderer {
     this.scene.background = new THREE.Color(0x0A0E14)
 
     // 雾效（远处淡化 = 时间淡化原则）
-    this.scene.fog = new THREE.Fog(0x0A0E14, 40, 120)
+    // 无雾效——所有内容清晰可见
 
     // 光照
     const ambient = new THREE.AmbientLight(0x404040, 0.6)
@@ -154,10 +152,34 @@ export class BattlefieldRenderer {
     ground.position.y = 0
     this.scene.add(ground)
 
-    // 网格线（战术地图感）
-    const grid = new THREE.GridHelper(200, 50, 0x30363D, 0x21262D)
+    // 网格线（战术地图感，更细密）
+    const grid = new THREE.GridHelper(200, 80, 0x30363D, 0x1C2128)
     grid.position.y = 0.01
     this.scene.add(grid)
+
+    // 中心基地标记（十字准星）
+    const centerGeo = new THREE.RingGeometry(3, 3.3, 32)
+    const centerMat = new THREE.MeshStandardMaterial({
+      color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.3,
+      side: THREE.DoubleSide,
+    })
+    const center = new THREE.Mesh(centerGeo, centerMat)
+    center.rotation.x = -Math.PI / 2
+    center.position.y = 0.02
+    this.scene.add(center)
+
+    // 四角方位标记
+    for (const [mx, mz, label] of [[-50, -50, 'NW'], [50, -50, 'NE'], [-50, 50, 'SW'], [50, 50, 'SE']]) {
+      const markGeo = new THREE.RingGeometry(1.5, 1.8, 16)
+      const markMat = new THREE.MeshStandardMaterial({
+        color: 0x30363D, emissive: 0x30363D, emissiveIntensity: 0.5,
+        side: THREE.DoubleSide,
+      })
+      const mark = new THREE.Mesh(markGeo, markMat)
+      mark.rotation.x = -Math.PI / 2
+      mark.position.set(mx, 0.02, mz)
+      this.scene.add(mark)
+    }
 
     // 环境粒子（漂浮的尘埃，增加空间感）
     this.createAmbientParticles()
@@ -254,30 +276,104 @@ export class BattlefieldRenderer {
     const group = new THREE.Group()
     group.name = `building_${turn.turnId}`
 
-    // ═══ 建筑主体（底座平台 + 上升结构）═══
-    // 底座（宽大的平台）
-    const baseGeo = new THREE.BoxGeometry(6, 0.5, 5)
+    // ═══ 建筑主体（精细建模：多层结构）═══
+    // 底座第一层（宽大的平台，有倒角）
+    const baseGeo = new THREE.BoxGeometry(7, 0.4, 6)
     const baseMat = new THREE.MeshStandardMaterial({
-      color: 0x1C2128,
-      roughness: 0.7,
-      metalness: 0.3,
+      color: 0x1C2128, roughness: 0.6, metalness: 0.4,
     })
     const base = new THREE.Mesh(baseGeo, baseMat)
-    base.position.y = 0.25
+    base.position.y = 0.2
     group.add(base)
 
-    // 建筑主体（中央塔楼）
-    const towerGeo = new THREE.BoxGeometry(3.5, 4, 3)
-    const towerMat = new THREE.MeshStandardMaterial({
-      color: 0x21262D,
-      roughness: 0.5,
-      metalness: 0.5,
-      emissive: 0x161B22,
-      emissiveIntensity: 0.5,
+    // 底座第二层（略小的台阶）
+    const base2Geo = new THREE.BoxGeometry(6, 0.3, 5)
+    const base2 = new THREE.Mesh(base2Geo, baseMat)
+    base2.position.y = 0.55
+    group.add(base2)
+
+    // 底座边缘发光条（霓虹边框）
+    const edgeGeo = new THREE.BoxGeometry(7.1, 0.08, 6.1)
+    const edgeMat = new THREE.MeshStandardMaterial({
+      color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.6,
     })
-    const tower = new THREE.Mesh(towerGeo, towerMat)
-    tower.position.y = 2.5
-    group.add(tower)
+    const edge = new THREE.Mesh(edgeGeo, edgeMat)
+    edge.position.y = 0.42
+    group.add(edge)
+
+    // 建筑主体（中央塔楼——三层结构）
+    // 第一层（最宽）
+    const tower1Geo = new THREE.BoxGeometry(4, 1.8, 3.5)
+    const towerMat = new THREE.MeshStandardMaterial({
+      color: 0x21262D, roughness: 0.4, metalness: 0.6,
+      emissive: 0x161B22, emissiveIntensity: 0.3,
+    })
+    const tower1 = new THREE.Mesh(tower1Geo, towerMat)
+    tower1.position.y = 1.6
+    group.add(tower1)
+
+    // 第二层（收窄）
+    const tower2Geo = new THREE.BoxGeometry(3, 1.8, 2.5)
+    const tower2 = new THREE.Mesh(tower2Geo, towerMat)
+    tower2.position.y = 3.4
+    group.add(tower2)
+
+    // 第三层（最窄，顶部）
+    const tower3Geo = new THREE.BoxGeometry(2, 1.2, 1.8)
+    const tower3 = new THREE.Mesh(tower3Geo, towerMat)
+    tower3.position.y = 4.9
+    group.add(tower3)
+
+    // 塔楼窗户（发光竖条，像科幻建筑）
+    for (let wi = 0; wi < 3; wi++) {
+      const winGeo = new THREE.BoxGeometry(0.15, 0.8, 0.02)
+      const winMat = new THREE.MeshStandardMaterial({
+        color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.8,
+      })
+      const win = new THREE.Mesh(winGeo, winMat)
+      win.position.set(-1 + wi * 1, 1.6, 1.78)
+      group.add(win)
+      const win2 = new THREE.Mesh(winGeo, winMat)
+      win2.position.set(-0.7 + wi * 0.7, 3.4, 1.28)
+      group.add(win2)
+    }
+
+    // 塔楼天线（顶部尖刺）
+    const antGeo = new THREE.CylinderGeometry(0.02, 0.05, 1.5, 4)
+    const antMat = new THREE.MeshStandardMaterial({
+      color: 0x6E7681, metalness: 0.8, roughness: 0.3,
+    })
+    const antenna = new THREE.Mesh(antGeo, antMat)
+    antenna.position.y = 6.2
+    group.add(antenna)
+
+    // 天线顶部小球
+    const antBallGeo = new THREE.SphereGeometry(0.08, 8, 8)
+    const antBallMat = new THREE.MeshStandardMaterial({
+      color: 0xFF6B9D, emissive: 0xFF6B9D, emissiveIntensity: 1.0,
+    })
+    const antBall = new THREE.Mesh(antBallGeo, antBallMat)
+    antBall.position.y = 7
+    group.add(antBall)
+
+    // 建筑侧面装饰柱（四角）
+    for (const [dx, dz] of [[-3.2, -2.7], [3.2, -2.7], [-3.2, 2.7], [3.2, 2.7]]) {
+      const pillarGeo = new THREE.CylinderGeometry(0.15, 0.15, 3.2, 6)
+      const pillarMat = new THREE.MeshStandardMaterial({
+        color: 0x30363D, metalness: 0.7, roughness: 0.3,
+      })
+      const pillar = new THREE.Mesh(pillarGeo, pillarMat)
+      pillar.position.set(dx, 1.8, dz)
+      group.add(pillar)
+      // 柱子顶部发光帽
+      const capGeo = new THREE.SphereGeometry(0.18, 8, 8)
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0x4A9EFF, emissive: 0x4A9EFF, emissiveIntensity: 0.5,
+      })
+      const cap = new THREE.Mesh(capGeo, capMat)
+      cap.position.set(dx, 3.5, dz)
+      group.add(cap)
+    }
 
     // 顶部（发光核心）
     const coreGeo = new THREE.OctahedronGeometry(1.2)
@@ -382,7 +478,7 @@ export class BattlefieldRenderer {
 
       // 创建单位 mesh
       const unitMesh = this.createUnitMesh(unit, spec)
-      unitMesh.position.set(ufx, 0.3, ufz)
+      unitMesh.position.set(ufx, 0.5, ufz)
       building.add(unitMesh)
     }
 
@@ -405,39 +501,63 @@ export class BattlefieldRenderer {
     }
   }
 
-  private createUnitMesh(unit: BattleUnit, spec: ReturnType<typeof getUnitSpec>): THREE.Mesh {
-    let geometry: THREE.BufferGeometry
+  private createUnitMesh(unit: BattleUnit, spec: ReturnType<typeof getUnitSpec>): THREE.Group {
+    const group = new THREE.Group()
 
+    // ═══ 主体 ═══
+    let geometry: THREE.BufferGeometry
     switch (spec.shape) {
-      case 'sphere':
-        geometry = new THREE.SphereGeometry(spec.size, 12, 8)
-        break
-      case 'cone':
-        geometry = new THREE.ConeGeometry(spec.size, spec.size * 2, 6)
-        break
-      case 'octa':
-        geometry = new THREE.OctahedronGeometry(spec.size)
-        break
-      case 'cyl':
-        geometry = new THREE.CylinderGeometry(spec.size * 0.5, spec.size, spec.size * 1.5, 8)
-        break
-      default: // box
-        geometry = new THREE.BoxGeometry(spec.size, spec.size, spec.size)
+      case 'sphere': geometry = new THREE.SphereGeometry(spec.size, 12, 8); break
+      case 'cone': geometry = new THREE.ConeGeometry(spec.size, spec.size * 2, 6); break
+      case 'octa': geometry = new THREE.OctahedronGeometry(spec.size); break
+      case 'cyl': geometry = new THREE.CylinderGeometry(spec.size * 0.5, spec.size, spec.size * 1.5, 8); break
+      default: geometry = new THREE.BoxGeometry(spec.size, spec.size, spec.size)
     }
 
-    // 失败的单位用红色
     const color = unit.ok ? spec.color : 0xFF4444
     const material = new THREE.MeshStandardMaterial({
       color,
       emissive: new THREE.Color(color),
       emissiveIntensity: unit.ok ? spec.emissive : 0.8,
-      roughness: 0.4,
-      metalness: 0.3,
+      roughness: 0.3,
+      metalness: 0.4,
     })
+    const body = new THREE.Mesh(geometry, material)
+    group.add(body)
 
-    const mesh = new THREE.Mesh(geometry, material)
-    mesh.name = `unit_${unit.name}_${Math.random().toString(36).slice(2, 6)}`
-    return mesh
+    // ═══ 底盘（悬浮效果）═══
+    const discGeo = new THREE.CylinderGeometry(spec.size * 0.8, spec.size * 0.6, 0.08, 12)
+    const discMat = new THREE.MeshStandardMaterial({
+      color: 0x30363D, metalness: 0.6, roughness: 0.4,
+    })
+    const disc = new THREE.Mesh(discGeo, discMat)
+    disc.position.y = -spec.size * 0.8
+    group.add(disc)
+
+    // 底盘发光环
+    const ringGeo = new THREE.TorusGeometry(spec.size * 0.7, 0.03, 6, 16)
+    const ringMat = new THREE.MeshStandardMaterial({
+      color, emissive: new THREE.Color(color), emissiveIntensity: 0.4,
+    })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    ring.rotation.x = Math.PI / 2
+    ring.position.y = -spec.size * 0.7
+    group.add(ring)
+
+    // ═══ 失败标记（红色警示三角）═══
+    if (!unit.ok) {
+      const warnGeo = new THREE.ConeGeometry(0.15, 0.25, 3)
+      const warnMat = new THREE.MeshStandardMaterial({
+        color: 0xFF4444, emissive: 0xFF4444, emissiveIntensity: 1.0,
+      })
+      const warn = new THREE.Mesh(warnGeo, warnMat)
+      warn.position.y = spec.size + 0.3
+      warn.rotation.x = Math.PI // 倒立三角
+      group.add(warn)
+    }
+
+    group.name = `unit_${unit.name}_${Math.random().toString(36).slice(2, 6)}`
+    return group
   }
 
   /* ════════════════════════════════════════════════
@@ -483,6 +603,7 @@ export class BattlefieldRenderer {
 
   private updateCamera() {
     const t = this.clock.getElapsedTime()
+    void t // used in animations below
     const x = this.camTarget.x + Math.sin(this.camAngle) * this.camDistance
     const z = this.camTarget.z + Math.cos(this.camAngle) * this.camDistance
     const y = this.camTarget.y + this.camDistance * 0.7
@@ -553,6 +674,7 @@ export class BattlefieldRenderer {
   private loop = () => {
     const dt = this.clock.getDelta()
     const t = this.clock.getElapsedTime()
+    void t // used in animations below
 
     // 建筑动画
     for (const building of this.buildings) {
