@@ -59,11 +59,11 @@ export function TopBar({
         {snapshot.providerLabel && <span className="model-chip">{snapshot.providerLabel}</span>}
         <button
           type="button"
-          className={`btn-icon ${viewMode === 'cosmos' ? 'on' : ''}`}
-          title={viewMode === 'chat' ? '智能体星图视图' : viewMode === 'cosmos' ? '装配线视图（Anatomy 风格）' : '切换回对话视图'}
+          className={`btn-icon ${viewMode !== 'chat' ? 'on' : ''}`}
+          title={viewMode === 'chat' ? '智能体可视化：🌌 星图视图' : viewMode === 'cosmos' ? '智能体可视化：🏭 装配线视图（Anatomy 风格）' : '返回对话视图'}
           onClick={onToggleView}
         >
-          🌌
+          {viewMode === 'chat' ? '🌌' : viewMode === 'cosmos' ? '🏭' : '💬'}
         </button>
         <button
           type="button"
