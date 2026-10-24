@@ -11,7 +11,7 @@
  * - 展开动画：从堆叠位置弹性展开到各自位置
  */
 
-import type { CosmosNode2D, CosmosEdge2D } from './CosmosCanvas2D'
+
 
 export interface AssistantStep {
   /** 这一步的 assistant 消息内容 */

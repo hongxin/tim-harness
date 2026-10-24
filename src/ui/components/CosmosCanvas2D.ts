@@ -1,3 +1,4 @@
+import { drawTurnStackNode, TurnStackNode } from './TurnStackV2'
 import { drawStackEffect } from './TurnStack'
 import { drawMachinePartV2 as drawMachinePart, drawExternalLabel } from './MachinePartsV2'
 import { drawStatusLight, drawConveyorBelt, getToolIcon } from './MachineParts'
@@ -152,6 +153,7 @@ interface Star{x:number;y:number;size:number;layer:number;alpha:number;twinkle:b
 interface P{edgeId:string;t:number}
 export class CosmosCanvas2D{private c:HTMLCanvasElement;private x:CanvasRenderingContext2D;private w=0;private h=0;private dpr=1;private ai=0;private sim:SimS={nodes:new Map(),edges:[],clusters:new Map(),cooled:false};private st:Star[]=[];private pt:P[]=[];private t0=performance.now();private z=1;private ox=0;private oy=0;private hi:string|null=null
   private hoverNeighbors:Set<string>=new Set();private si:string|null=null;private ft:number|null=null;private ro:ResizeObserver;private os:((n:CosmosNode2D|null)=>void)|null=null;private oc:((c:string|null)=>void)|null=null;private cam:{t:number;d:number;fx:number;fy:number;fz:number;tx:number;ty:number;tz:number}|null=null;private pan=false;private dn:string|null=null
+  private _expandedStacks:Set<string>=new Set()
   private _stackInfo:Map<number,number>=new Map()
   private _expandedTurn:number=-1 // turnId → step count
   // 主题配色（从 CSS 变量读取，随主题切换更新）
@@ -349,20 +351,26 @@ const gr=er*(isH?2.0:1.2);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr)
 if(bi<1&&isF){const ab=bi;for(let ap=0;ap<4;ap++){const aA=ap/4*Math.PI*2+bi*2;const aD=er*(1-ab)*2.5;const aX=sx+Math.cos(aA)*aD,aY=sy+Math.sin(aA)*aD;const aR=Math.max(2,er*.15);ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=this.theme.glow(hue,70,.6*(1-ab)*al);ctx.fill()}if(ab>.85){ctx.beginPath();ctx.arc(sx,sy,er*1.2,0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,90,(ab-.85)/.15*.5*al);ctx.lineWidth=2;ctx.stroke()}}
 // Anatomy: 工具节点 = 机械零件（非纯色方块）
 if(n.kind==='tool'){
-  const { icon, verb } = getToolIcon(n.toolName ?? n.content)
+  const { icon } = getToolIcon(n.toolName ?? n.content)
   drawMachinePart(ctx, icon, sx, sy, er * 0.75, hue, al, now, this.theme.dark)
   if (this.z > 0.4) drawExternalLabel(ctx, n.toolName ?? '', sx, sy, er, 'below', this.theme.dark, Math.max(8, 10 * this.z))
   
   // 状态指示灯
   const lightStatus = n.isRunning ? 'running' : n.isError ? 'error' : n.durationMs != null ? 'done' : 'idle'
   drawStatusLight(ctx, sx + er * 0.6, sy - er * 0.6, lightStatus, now)
-}else if(false){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=this.theme.dark?`hsla(${hue},${sa}%,${li+20}%,.4)`:`hsla(${hue},${sa}%,${li-10}%,.5)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
+}else if(false){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=this.theme.dark?`hsla(${hue},${sa}%,${li+20}%,.4)`:`hsla(${hue},${sa}%,${li-10}%,.5)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);// TurnStackV2: turn-stack node rendering
+    if((n as any).kind==='turn-stack'){
+      const tsn=n as TurnStackNode
+      const isExp=this._expandedStacks.has(n.id)
+      drawTurnStackNode(ctx,tsn,sx,sy,er,now,this.theme.dark,this.z,isExp)
+      continue
+    }
+    ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
 // Running gear (Anatomy metaphor)
 if(n.isRunning&&isF){const gr2=er*1.7;const teeth=8;const rot=now/250;ctx.save();ctx.translate(sx,sy);ctx.rotate(rot);for(let t2=0;t2<teeth;t2++){const ta=t2/teeth*Math.PI*2;ctx.beginPath();ctx.moveTo(Math.cos(ta)*er*1.15,Math.sin(ta)*er*1.15);ctx.lineTo(Math.cos(ta)*gr2,Math.sin(ta)*gr2);ctx.strokeStyle=this.theme.glow(hue,80,.5*al);ctx.lineWidth=2;ctx.stroke()}ctx.beginPath();ctx.arc(0,0,er*1.15,0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,80,.3*al);ctx.lineWidth=1.5;ctx.stroke();ctx.restore()}// TurnStack 堆叠效果
     const _cnt=this._stackInfo.get(n.turnId)||0
     if(_cnt>1&&n.kind==='assistant'){
-      const _isExp=this._expandedTurn===n.turnId
-      drawStackEffect(ctx,sx,sy,er,_cnt,hue,this.theme.dark,this.z)
+            drawStackEffect(ctx,sx,sy,er,_cnt,hue,this.theme.dark,this.z)
     }
 if(isS){ctx.beginPath();ctx.arc(sx,sy,er+3,0,Math.PI*2);ctx.strokeStyle=this.theme.selectRing(hue);ctx.lineWidth=2;ctx.stroke()}
 // 用户拖拽过的节点：虚线圆环标记（地图上的"用户标记"）
