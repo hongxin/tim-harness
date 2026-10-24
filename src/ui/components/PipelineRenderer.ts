@@ -176,7 +176,7 @@ export class PipelineRenderer {
     // 总宽度：含边距（每管道 ±10px 底座 + 首尾 30px padding）
     const contentW = this.data.turns.length * (PIPE_W + GAP_H) - GAP_H
     const contentH = HEADER_H + USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4
-    const fit = fitToViewport(contentW, contentH, this.w, this.h - FOOTER_H, 1.0, 20)
+    const fit = fitToViewport(contentW, contentH, this.w, this.h - FOOTER_H, 1.0, 20, 0.55)
     this.zoom = fit.zoom
     this.offsetX = fit.offsetX
     this.offsetY = fit.offsetY

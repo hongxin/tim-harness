@@ -210,10 +210,12 @@ export function fitToViewport(
   canvasW: number, canvasH: number,
   maxZoom: number = 1.0,
   padding: number = 30,
+  minZoom: number = 0.6,
 ): { zoom: number; offsetX: number; offsetY: number } {
   const availW = canvasW - padding * 2
   const availH = canvasH - padding * 2
-  const zoom = Math.min(availW / contentW, availH / contentH, maxZoom)
+  // 最小缩放保护：如果压缩后文字不可读（<10px），宁可允许滚动
+  const zoom = Math.max(minZoom, Math.min(availW / contentW, availH / contentH, maxZoom))
   const scaledW = contentW * zoom
   const scaledH = contentH * zoom
   return {
