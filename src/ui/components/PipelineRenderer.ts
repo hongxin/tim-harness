@@ -377,59 +377,88 @@ export class PipelineRenderer {
       ctx.beginPath(); ctx.arc(px, sy1, 3, 0, Math.PI * 2); ctx.fill()
     }
 
-    // ═══ 相邻 STATION 的有机连接线 ═══
+    // ═══ 相邻 STATION 连接线（正交布线：直线 + 直角转弯）═══
     for (let ti = 0; ti < turns.length - 1; ti++) {
       const nodeA = this.physNodes.get(String(turns[ti].turnId))
       const nodeB = this.physNodes.get(String(turns[ti + 1].turnId))
       if (!nodeA || !nodeB) continue
-      
-      // 连接从 A 的右/底边到 B 的左/顶边（蛇形方向）
-      const [ax, ay] = this.w2s(nodeA.x + this.pipeW / 2, nodeA.y + 50 * this.zoom)
-      const [bx, by] = this.w2s(nodeB.x - this.pipeW / 2, nodeB.y + 50 * this.zoom)
-      
-      // 有机曲线（贝塞尔，不是直线）
-      const midX = (ax + bx) / 2
-      const midY = (ay + by) / 2
+
+      // 连接点：A 的右边缘中心 → B 的左边缘中心
+      const [ax, ay] = this.w2s(nodeA.x + this.pipeW * 0.5, nodeA.y + 50 * this.zoom)
+      const [bx, by] = this.w2s(nodeB.x - this.pipeW * 0.5, nodeB.y + 50 * this.zoom)
+
       const dx = bx - ax
       const dy = by - ay
-      const len = Math.sqrt(dx * dx + dy * dy) || 1
-      
-      // 曲线控制点（垂直于连线方向偏移）
-      const curveAmount = Math.min(30, len * 0.15)
-      const c1x = midX - dy / len * curveAmount
-      const c1y = midY + dx / len * curveAmount
-      
-      // 画双层曲线（外层粗+透明，内层细+亮）
-      ctx.strokeStyle = 'rgba(74,158,255,0.15)'
-      ctx.lineWidth = 4
+
+      // ═══ 路径点计算（正交布线）═══
+      const points: Array<[number, number]> = [[ax, ay]]
+
+      if (Math.abs(dy) < 8) {
+        // 情况 1：同一行 → 纯直线
+        points.push([bx, by])
+      } else if (dx > 0 && Math.abs(dy) > 20) {
+        // 情况 2：同行但不同高度 → L 形（先水平后垂直）
+        const midX = ax + dx * 0.6
+        points.push([midX, ay])
+        points.push([midX, by])
+        points.push([bx, by])
+      } else if (dx <= 0) {
+        // 情况 3：换行（蛇形折返）→ U 形（右→下→左→到达）
+        const rightOffset = 20 // 向右伸出一点再折返
+        points.push([ax + rightOffset, ay])
+        points.push([ax + rightOffset, by])
+        points.push([bx, by])
+      } else {
+        // 情况 4：任意位置 → 简单 L 形
+        const midY = (ay + by) / 2
+        points.push([ax, midY])
+        points.push([bx, midY])
+        points.push([bx, by])
+      }
+
+      // ═══ 绘制路径（带圆角转弯）═══
+      const CORNER_R = 6 // 圆角半径
+
+      ctx.strokeStyle = 'rgba(74, 158, 255, 0.12)'
+      ctx.lineWidth = 5
+      ctx.lineCap = 'round'
       ctx.beginPath()
-      ctx.moveTo(ax, ay)
-      ctx.quadraticCurveTo(c1x, c1y, bx, by)
+      this.tracePath(ctx, points, CORNER_R)
       ctx.stroke()
-      
-      ctx.strokeStyle = 'rgba(74,158,255,0.4)'
+
+      ctx.strokeStyle = 'rgba(74, 158, 255, 0.45)'
       ctx.lineWidth = 1.5
       ctx.beginPath()
-      ctx.moveTo(ax, ay)
-      ctx.quadraticCurveTo(c1x, c1y, bx, by)
+      this.tracePath(ctx, points, CORNER_R)
       ctx.stroke()
-      
-      // 流动粒子（沿曲线）
-      const t2 = (now / 1200 + ti * 0.25) % 1
-      const px2 = (1-t2)*(1-t2)*ax + 2*(1-t2)*t2*c1x + t2*t2*bx
-      const py2 = (1-t2)*(1-t2)*ay + 2*(1-t2)*t2*c1y + t2*t2*by
+
+      // ═══ 流动粒子（沿路径）═══
+      const particleT = (now / 1500 + ti * 0.2) % 1
+      const [ppx, ppy] = this.pointOnPath(points, particleT)
       ctx.fillStyle = '#4A9EFF'
-      ctx.beginPath(); ctx.arc(px2, py2, 3, 0, Math.PI * 2); ctx.fill()
-      
-      // 箭头（在 B 端）
-      const ang = Math.atan2(by - c1y, bx - c1x)
-      ctx.fillStyle = 'rgba(74,158,255,0.5)'
-      ctx.beginPath()
-      ctx.moveTo(bx - Math.cos(ang) * 8, by - Math.sin(ang) * 8 - Math.sin(ang) * 4)
-      ctx.lineTo(bx - Math.cos(ang) * 8 - Math.cos(ang + Math.PI/2) * 4, by - Math.sin(ang) * 8 - Math.sin(ang + Math.PI/2) * 4)
-      ctx.lineTo(bx - Math.cos(ang) * 8 + Math.cos(ang + Math.PI/2) * 4, by - Math.sin(ang) * 8 + Math.sin(ang + Math.PI/2) * 4)
-      ctx.closePath()
-      ctx.fill()
+      ctx.beginPath(); ctx.arc(ppx, ppy, 3, 0, Math.PI * 2); ctx.fill()
+      // 粒子光晕
+      ctx.fillStyle = 'rgba(74, 158, 255, 0.15)'
+      ctx.beginPath(); ctx.arc(ppx, ppy, 6, 0, Math.PI * 2); ctx.fill()
+
+      // ═══ 箭头（在 B 端，沿最后一段方向）═══
+      if (points.length >= 2) {
+        const [prevX, prevY] = points[points.length - 2]
+        const [endX, endY] = points[points.length - 1]
+        const ang = Math.atan2(endY - prevY, endX - prevX)
+        ctx.fillStyle = 'rgba(74, 158, 255, 0.6)'
+        ctx.save()
+        ctx.translate(bx, by)
+        ctx.rotate(ang)
+        ctx.beginPath()
+        ctx.moveTo(0, 0)
+        ctx.lineTo(-8, -4)
+        ctx.lineTo(-5, 0)
+        ctx.lineTo(-8, 4)
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
     }
 
     this.drawFooter(ctx, now)
@@ -735,6 +764,72 @@ export class PipelineRenderer {
       map.set(cat, (map.get(cat) ?? 0) + (t.count ?? 1))
     }
     return map
+  }
+
+  
+  /** 沿路径绘制（在转角处用圆角代替硬角） */
+  private tracePath(ctx: CanvasRenderingContext2D, points: Array<[number, number]>, cornerR: number) {
+    if (points.length < 2) return
+    ctx.moveTo(points[0][0], points[0][1])
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const [px, py] = points[i - 1]
+      const [cx, cy] = points[i]
+      const [nx, ny] = points[i + 1]
+
+      // 计算转角方向
+      const dx1 = cx - px, dy1 = cy - py
+      const dx2 = nx - cx, dy2 = ny - cy
+      const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1
+      const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1
+
+      // 限制圆角半径不超过线段一半
+      const r = Math.min(cornerR, len1 / 2, len2 / 2)
+
+      // 入点（转角前 r 像素）
+      const inX = cx - dx1 / len1 * r
+      const inY = cy - dy1 / len1 * r
+      // 出点（转角后 r 像素）
+      const outX = cx + dx2 / len2 * r
+      const outY = cy + dy2 / len2 * r
+
+      ctx.lineTo(inX, inY)
+      ctx.quadraticCurveTo(cx, cy, outX, outY)
+    }
+
+    // 最后一个点
+    const [lastX, lastY] = points[points.length - 1]
+    ctx.lineTo(lastX, lastY)
+  }
+
+  /** 计算路径上 t 位置（0-1）的坐标 */
+  private pointOnPath(points: Array<[number, number]>, t: number): [number, number] {
+    if (points.length < 2) return points[0] ?? [0, 0]
+
+    // 计算总长度
+    let totalLen = 0
+    const segLens: number[] = []
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i][0] - points[i-1][0]
+      const dy = points[i][1] - points[i-1][1]
+      const len = Math.sqrt(dx * dx + dy * dy)
+      segLens.push(len)
+      totalLen += len
+    }
+
+    // 找到 t 对应的线段
+    let targetLen = t * totalLen
+    for (let i = 0; i < segLens.length; i++) {
+      if (targetLen <= segLens[i]) {
+        const segT = segLens[i] === 0 ? 0 : targetLen / segLens[i]
+        const [ax, ay] = points[i]
+        const [bx, by] = points[i + 1]
+        return [ax + (bx - ax) * segT, ay + (by - ay) * segT]
+      }
+      targetLen -= segLens[i]
+    }
+
+    return points[points.length - 1]
   }
 
   private drawFooter(ctx: CanvasRenderingContext2D, now: number) {
