@@ -1,4 +1,4 @@
-import { drawTurnStackNode, TurnStackNode } from './TurnStackV2'
+import { drawTurnStackNode } from './TurnStackV2'
 import { drawStackEffect } from './TurnStack'
 import { drawMachinePartV2 as drawMachinePart, drawExternalLabel } from './MachinePartsV2'
 import { drawStatusLight, drawConveyorBelt, getToolIcon } from './MachineParts'
@@ -208,7 +208,7 @@ constructor(c:HTMLCanvasElement){this.c=c;this.x=c.getContext('2d')!;this.ro=new
 destroy(){cancelAnimationFrame(this.ai);this.ro.disconnect();this.ue()}
 setOnNodeSelect(cb:(n:CosmosNode2D|null)=>void){this.os=cb}
 setOnCaptionUpdate(cb:(c:string|null)=>void){this.oc=cb}
-setNodes(ns:CosmosNode2D[],es:CosmosEdge2D[],_cl:TurnCluster[]){const ni=new Set(ns.map(n=>n.id));for(const id of this.sim.nodes.keys())if(!ni.has(id))this.sim.nodes.delete(id);for(const n of ns){const o=this.sim.nodes.get(n.id);if(o){o.content=n.content;o.isError=n.isError;o.durationMs=n.durationMs;o.hue=n.hue;o.toolName=n.toolName}else{this.sim.nodes.set(n.id,{...n});this.sim.cooled=false}}this.sim.edges=es;this.sim.cooled=false;const ei=new Set(es.map(e=>e.id));this.pt=this.pt.filter(p=>ei.has(p.edgeId));for(const e of es)if(!this.pt.some(p=>p.edgeId===e.id))this.pt.push({edgeId:e.id,t:Math.random()})
+setNodes(ns:CosmosNode2D[],es:CosmosEdge2D[],_cl:TurnCluster[]){const ni=new Set(ns.map(n=>n.id));for(const id of this.sim.nodes.keys())if(!ni.has(id))this.sim.nodes.delete(id);for(const n of ns){const o=this.sim.nodes.get(n.id);if(o){o.content=n.content;o.isError=n.isError;o.durationMs=n.durationMs;o.hue=n.hue;o.toolName=n.toolName;o.kind=n.kind;Object.assign(o,n)}else{this.sim.nodes.set(n.id,{...n});this.sim.cooled=false}}this.sim.edges=es;this.sim.cooled=false;const ei=new Set(es.map(e=>e.id));this.pt=this.pt.filter(p=>ei.has(p.edgeId));for(const e of es)if(!this.pt.some(p=>p.edgeId===e.id))this.pt.push({edgeId:e.id,t:Math.random()})
     // 检测多步骤回合（同 turnId 的 assistant 节点数 > 1）
     const turnCount=new Map<number,number>()
     for(const n of this.sim.nodes.values()){
@@ -350,7 +350,15 @@ for(const n of this.sim.nodes.values()){const[sx,sy]=this.w2s(n.x,n.y);const r=n
 const gr=er*(isH?2.0:1.2);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr);g.addColorStop(0,this.theme.glow(hue,sa,(isH?.25:.1)*al));g.addColorStop(1,'transparent');ctx.beginPath();ctx.arc(sx,sy,gr,0,Math.PI*2);ctx.fillStyle=g;ctx.fill()
 if(bi<1&&isF){const ab=bi;for(let ap=0;ap<4;ap++){const aA=ap/4*Math.PI*2+bi*2;const aD=er*(1-ab)*2.5;const aX=sx+Math.cos(aA)*aD,aY=sy+Math.sin(aA)*aD;const aR=Math.max(2,er*.15);ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=this.theme.glow(hue,70,.6*(1-ab)*al);ctx.fill()}if(ab>.85){ctx.beginPath();ctx.arc(sx,sy,er*1.2,0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,90,(ab-.85)/.15*.5*al);ctx.lineWidth=2;ctx.stroke()}}
 // Anatomy: 工具节点 = 机械零件（非纯色方块）
-if(n.kind==='tool'){
+
+    // TurnStackV2: turn-stack node rendering (before all other kinds)
+    if((n as any).kind==='turn-stack'){
+      const tsn=n as any
+      const isExp=this._expandedStacks.has(n.id)
+      drawTurnStackNode(ctx,tsn,sx,sy,er,now,this.theme.dark,this.z,isExp)
+      continue
+    }
+    if(n.kind==='tool'){
   const { icon } = getToolIcon(n.toolName ?? n.content)
   drawMachinePart(ctx, icon, sx, sy, er * 0.75, hue, al, now, this.theme.dark)
   if (this.z > 0.4) drawExternalLabel(ctx, n.toolName ?? '', sx, sy, er, 'below', this.theme.dark, Math.max(8, 10 * this.z))
@@ -358,14 +366,7 @@ if(n.kind==='tool'){
   // 状态指示灯
   const lightStatus = n.isRunning ? 'running' : n.isError ? 'error' : n.durationMs != null ? 'done' : 'idle'
   drawStatusLight(ctx, sx + er * 0.6, sy - er * 0.6, lightStatus, now)
-}else if(false){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=this.theme.dark?`hsla(${hue},${sa}%,${li+20}%,.4)`:`hsla(${hue},${sa}%,${li-10}%,.5)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);// TurnStackV2: turn-stack node rendering
-    if((n as any).kind==='turn-stack'){
-      const tsn=n as any as TurnStackNode
-      const isExp=this._expandedStacks.has(n.id)
-      drawTurnStackNode(ctx,tsn,sx,sy,er,now,this.theme.dark,this.z,isExp)
-      continue
-    }
-    ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
+}else if(false){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=this.theme.dark?`hsla(${hue},${sa}%,${li+20}%,.4)`:`hsla(${hue},${sa}%,${li-10}%,.5)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.beginPath();ctx.arc(sx,sy,er,0,Math.PI*2);ctx.fillStyle=bg2;ctx.fill()}
 // Running gear (Anatomy metaphor)
 if(n.isRunning&&isF){const gr2=er*1.7;const teeth=8;const rot=now/250;ctx.save();ctx.translate(sx,sy);ctx.rotate(rot);for(let t2=0;t2<teeth;t2++){const ta=t2/teeth*Math.PI*2;ctx.beginPath();ctx.moveTo(Math.cos(ta)*er*1.15,Math.sin(ta)*er*1.15);ctx.lineTo(Math.cos(ta)*gr2,Math.sin(ta)*gr2);ctx.strokeStyle=this.theme.glow(hue,80,.5*al);ctx.lineWidth=2;ctx.stroke()}ctx.beginPath();ctx.arc(0,0,er*1.15,0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,80,.3*al);ctx.lineWidth=1.5;ctx.stroke();ctx.restore()}// TurnStack 堆叠效果
     const _cnt=this._stackInfo.get(n.turnId)||0

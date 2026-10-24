@@ -158,6 +158,9 @@ export function mapSessionToCosmosV2(
           edges.push({ id: `g_${tid}`, fromId: `a${i}`, toId: tid, type: 'grid' })
         }
         prevLast = `a${i}`
+        // user -> assistant flow edge
+        const _un = nodes.find(nd => nd.kind === 'user' && nd.turnId === turn)
+        if (_un) edges.push({ id: `f_u${turn}`, fromId: _un.id, toId: `a${i}`, type: 'flow' })
       } else {
         // 多步骤：回合堆叠节点
         const stackNode: TurnStackNode = {
@@ -200,6 +203,9 @@ export function mapSessionToCosmosV2(
 
         nodes.push(stackNode)
         prevLast = id
+      // user -> turn-stack flow edge
+      const _us = nodes.find(nd => nd.kind === 'user' && nd.turnId === turn)
+      if (_us) edges.push({ id: `f_ts${turn}`, fromId: _us.id, toId: id, type: 'flow' })
       }
 
       i = j // 跳到处理完的位置
