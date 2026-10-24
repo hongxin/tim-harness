@@ -120,6 +120,9 @@ export class PipelineRenderer {
   private rowHeight = 500
   private offsetX = 0; private offsetY = 0
   private panning = false
+  private draggingTurn: string | null = null
+  private dragOffset = { x: 0, y: 0 }
+  private turnPositions = new Map<string, { x: number; y: number }>() // 用户拖拽后的自定义位置
   private panStart = { x: 0, y: 0 }
   private expandLevel = new Map<string, number>()
   private hitItems: Array<{ key: string; x: number; y: number; w: number; h: number }> = []
@@ -154,6 +157,10 @@ export class PipelineRenderer {
     this.zoom = fit.zoom
     this.offsetX = fit.offsetX
     this.offsetY = fit.offsetY
+  }
+
+  private s2w(sx: number, sy: number): [number, number] {
+    return [(sx - this.offsetX) / this.zoom, (sy - this.offsetY) / this.zoom]
   }
 
   private w2s(wx: number, wy: number): [number, number] {
@@ -214,15 +221,24 @@ export class PipelineRenderer {
     this.panStart = { x: e.clientX, y: e.clientY }
   }
 
-  private onUp = () => { this.panning = false }
+  private onUp = () => { this.panning = false; this.draggingTurn = null }
   private onMove = (e: PointerEvent) => {
+    const r = this.canvas.getBoundingClientRect()
+    if (this.draggingTurn) {
+      const [wx2, wy2] = this.s2w(e.clientX - r.left, e.clientY - r.top)
+      const existing = this.turnPositions.get(this.draggingTurn)
+      if (existing) {
+        existing.x = wx2 - this.dragOffset.x
+        existing.y = wy2 - this.dragOffset.y
+      }
+      return
+    }
     if (this.panning) {
       this.offsetX += e.clientX - this.panStart.x
       this.offsetY += e.clientY - this.panStart.y
       this.panStart = { x: e.clientX, y: e.clientY }
       return
     }
-    const r = this.canvas.getBoundingClientRect()
     const sx = e.clientX - r.left, sy = e.clientY - r.top
     let hovering = false
     for (const item of this.hitItems) {
@@ -246,16 +262,21 @@ export class PipelineRenderer {
     this.hitItems = []
     const { turns } = this.data
 
-    // 换行排列：每行最多 maxPerRow 个管道
+    // 蛇形布局：自然延展，不强制换行数
+    // 到达画布宽度后向下折返（像蛇一样弯曲）
     const maxPerRow = Math.max(2, Math.floor((this.w - 40) / (this.pipeW + GAP_H)))
     for (let ti = 0; ti < turns.length; ti++) {
       const turn = turns[ti]
+      const custom = this.turnPositions.get(String(turn.turnId))
+      // 蛇形排列：偶数行从左到右，奇数行从右到左
       const row = Math.floor(ti / maxPerRow)
-      const col = ti % maxPerRow
-      const pipeX = col * (this.pipeW + GAP_H) + 20
+      const col = row % 2 === 0 ? ti % maxPerRow : maxPerRow - 1 - (ti % maxPerRow)
+      const defaultX = col * (this.pipeW + GAP_H) + 20
+      const pipeX = custom ? custom.x : defaultX
+      const pipeYBase = custom ? custom.y : row * (this.rowHeight * this.zoom + 20)
       // 每行有自己的 Y 偏移
       const rowH = this.rowHeight * this.zoom + 20
-      const pipeYOffset = row * rowH
+      const pipeYOffset = pipeYBase
       const tAlpha = temporalAlpha(ti, turns.length) * (turn.isPreCompact ? 0.7 : 1.0)
       ctx.globalAlpha = tAlpha
       ctx.save()
@@ -334,11 +355,11 @@ export class PipelineRenderer {
     ctx.beginPath(); ctx.arc(0, 0, gearR * 0.55, 0, Math.PI * 2); ctx.stroke()
     ctx.restore()
     ctx.fillStyle = C.think; ctx.font = `${14 * this.zoom}px sans-serif`; ctx.textAlign = 'left'
-    ctx.fillText('推理', px + pw * 0.5, py + th * 0.3)
+    drawTextSafe(ctx, 'ST ' + turn.turnId, px + pw * 0.5, py + th * 0.3, pw * 0.45, 'left')
     ctx.fillStyle = C.textDim; ctx.font = `${11 * this.zoom}px sans-serif`
     if (turn.finalText) {
       ctx.fillStyle = C.done + '80'
-      ctx.fillText(turn.finalText, px + pw * 0.5, py + th * 0.78)
+      if (turn.finalText) drawTextSafe(ctx, turn.finalText, px + pw * 0.5, py + th * 0.78, pw * 0.42, 'left')
     }
     py += th + gap
 
@@ -486,19 +507,19 @@ export class PipelineRenderer {
     }, now, { screws: false })
 
     const ctxRatio = Math.min(this.data.contextUsed / this.data.contextMax, 1)
-    drawGauge(ctx, barX + 40, barY + 25, 18, Math.round(ctxRatio * 100), 100, 'Ctx', 140, now)
+    drawGauge(ctx, barX + 28, barY + 25, 14, Math.round(ctxRatio * 100), 100, 'Ctx', 140, now) // 更小的仪表
 
     ctx.fillStyle = C.text; ctx.font = 'bold 16px ui-monospace, monospace'; ctx.textAlign = 'center'
-    ctx.fillText(this.data.totalTokens.toLocaleString(), barX + barW * 0.5, barY + 22)
+    ctx.fillText(this.data.totalTokens.toLocaleString(), barX + barW * 0.32, barY + 22)
     ctx.fillStyle = C.textDim; ctx.font = '9px monospace'
-    ctx.fillText('tokens', barX + barW * 0.5, barY + 34)
+    ctx.fillText('tok', barX + barW * 0.32, barY + 34)
     if (this.data.totalTokens > 0) {
       const cost = this.data.totalTokens * 0.0000014
       ctx.fillStyle = C.textDim + '80'
       ctx.fillText(`≈ ¥${cost.toFixed(4)}`, barX + barW * 0.5, barY + 46)
     }
 
-    const tlX = barX + barW - 120, tlW = 100, tlY = barY + 18
+    const tlX = barX + barW * 0.48, tlW = barW * 0.48, tlY = barY + 18
     let inputT = 0, thinkT = 0, toolT = 0
     for (const turn of this.data.turns) {
       inputT += 50; thinkT += 200
@@ -512,9 +533,9 @@ export class PipelineRenderer {
       const segW = (time / total) * tlW
       if (segW > 3) {
         ctx.fillStyle = color + '50'
-        ctx.beginPath(); ctx.roundRect(segX, tlY, segW - 1, 6, 2); ctx.fill()
+        ctx.beginPath(); ctx.roundRect(segX, tlY, segW - 1, 10, 3); ctx.fill()
         if (segW > 15) {
-          ctx.fillStyle = color + '80'; ctx.font = '7px monospace'; ctx.textAlign = 'center'
+          ctx.fillStyle = color + '90'; ctx.font = '9px monospace'; ctx.textAlign = 'center'
           ctx.fillText(label, segX + segW / 2, tlY + 14)
         }
       }
