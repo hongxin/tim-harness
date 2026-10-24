@@ -386,9 +386,10 @@ export class PipelineRenderer {
       const nodeB = this.physNodes.get(String(turns[ti + 1].turnId))
       if (!nodeA || !nodeB) continue
 
-      // 连接点：A 的右边缘中心 → B 的左边缘中心
-      const [ax, ay] = this.w2s(nodeA.x + this.pipeW * 0.5, nodeA.y + 50 * this.zoom)
-      const [bx, by] = this.w2s(nodeB.x - this.pipeW * 0.5, nodeB.y + 50 * this.zoom)
+      // 连接点：A 的输出锚点 → B 的输入锚点
+      const pwA = this.pipeW * this.zoom
+      const [ax, ay] = this.w2s(nodeA.x + pwA / 2, nodeA.y + 20 * this.zoom)
+      const [bx, by] = this.w2s(nodeB.x - pwA / 2, nodeB.y + 20 * this.zoom)
 
       const dx = bx - ax
       const dy = by - ay
@@ -647,6 +648,14 @@ export class PipelineRenderer {
       ctx.font = `${15 * this.zoom}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       drawTextSafe(ctx, `✅ ${turn.finalText}`, px + pw / 2, py + dh / 2, pw - 20, 'center')
     }
+
+    // ═══ 绘制锚点（输入/输出端口，像 UE 蓝图）═══
+    const hasPrev = turn.turnId > 1
+    const hasNext = this.data ? turn.turnId < this.data.turns.length : false
+    // 输入锚点：左上角（面板边缘处凸起）
+    this.drawAnchor(ctx, px, py + 20 * this.zoom, 'input', hasPrev, now)
+    // 输出锚点：右上角（面板边缘处凸起）
+    this.drawAnchor(ctx, px + pw, py + 20 * this.zoom, 'output', hasNext, now)
   }
 
   
@@ -833,6 +842,84 @@ export class PipelineRenderer {
     }
 
     return points[points.length - 1]
+  }
+
+  
+  /** 绘制锚点（凸起端口，像 UE 蓝图 / ComfyUI 节点） */
+  private drawAnchor(
+    ctx: CanvasRenderingContext2D,
+    x: number, y: number,
+    type: 'input' | 'output',
+    isConnected: boolean,
+    now: number,
+  ): void {
+    const r = 5 // 锚点半径
+    const isInput = type === 'input'
+    
+    ctx.save()
+    ctx.translate(x, y)
+
+    // 凸起形状：半圆凸起（从面板边缘伸出）
+    // 输入朝左，输出朝右
+    ctx.beginPath()
+    if (isInput) {
+      // 输入：从左侧凸出（半圆朝左）
+      ctx.arc(0, 0, r, Math.PI / 2, Math.PI * 1.5, false)
+    } else {
+      // 输出：从右侧凸出（半圆朝右）
+      ctx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false)
+    }
+    ctx.closePath()
+
+    // 填充（连接时亮色，未连接时暗色）
+    if (isConnected) {
+      ctx.fillStyle = '#4A9EFF'
+      ctx.fill()
+      // 光晕
+      const glowR = r * 2
+      const glow = ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, glowR)
+      glow.addColorStop(0, 'rgba(74,158,255,0.3)')
+      glow.addColorStop(1, 'transparent')
+      ctx.fillStyle = glow
+      ctx.beginPath(); ctx.arc(0, 0, glowR, 0, Math.PI * 2); ctx.fill()
+      // 重新画锚点
+      ctx.beginPath()
+      if (isInput) ctx.arc(0, 0, r, Math.PI/2, Math.PI*1.5, false)
+      else ctx.arc(0, 0, r, -Math.PI/2, Math.PI/2, false)
+      ctx.closePath()
+      ctx.fillStyle = '#4A9EFF'; ctx.fill()
+    } else {
+      ctx.fillStyle = '#30363D'
+      ctx.fill()
+    }
+
+    // 内圈（小圆点，像插孔）
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2)
+    ctx.fillStyle = isConnected ? '#0A0E14' : '#1C2128'
+    ctx.fill()
+
+    // 边框
+    ctx.beginPath()
+    if (isInput) ctx.arc(0, 0, r, Math.PI/2, Math.PI*1.5, false)
+    else ctx.arc(0, 0, r, -Math.PI/2, Math.PI/2, false)
+    ctx.closePath()
+    ctx.strokeStyle = isConnected ? '#4A9EFF' : '#484F58'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+
+    ctx.restore()
+  }
+
+  /** 获取 STATION 的锚点屏幕坐标 */
+  private getAnchors(turnId: string): { input: [number, number]; output: [number, number] } | null {
+    const node = this.physNodes.get(turnId)
+    if (!node) return null
+    const pw = this.pipeW * this.zoom
+    // 输入：左上角（面板顶部往下 20px）
+    const [ix, iy] = this.w2s(node.x - pw / 2, node.y + 20 * this.zoom)
+    // 输出：右上角（面板顶部往下 20px）
+    const [ox, oy] = this.w2s(node.x + pw / 2, node.y + 20 * this.zoom)
+    return { input: [ix, iy], output: [ox, oy] }
   }
 
   private drawFooter(ctx: CanvasRenderingContext2D, now: number) {
