@@ -26,12 +26,9 @@ const theme = process.argv.includes("--light") ? "light" : "dark";
 const WIDTH = 640, HEIGHT = 420;
 
 /* ═══════════ 布局：三个语义块，从左到右一条故事线 ═══════════ */
-const PLATE = { x: -170, y: -84, w: 340, d: 168, r: 9 };
-const PLATE_H = 10, FOOT_H = 5;
-
-// 公共底板（统率三块）
+// 唯一基准底板（v3 的台面+底板两层合并为一层）
 const BED = { x: -96, y: -52, w: 232, d: 104, r: 7 };
-const BED_Z = 8, BED_H = 6, BED_TOP = BED_Z + BED_H; // 顶 z=14
+const BED_Z = 0, BED_H = 8, BED_TOP = BED_Z + BED_H; // 顶 z=8
 
 // ① 进料斗（用户意图）
 const HOP = { x: -62, y: -8 };
@@ -39,7 +36,7 @@ const HOP = { x: -62, y: -8 };
 // ② 汽缸（LLM 主体）
 const ENG = { x: 0, y: -10 };
 const COL = { x: -20, y: -26, w: 40, d: 32, r: 5 };
-const BAR_R = 14, BAR_Z0 = 24, BAR_Z1 = 92;
+const BAR_R = 14, BAR_Z0 = BED_TOP + 8, BAR_Z1 = 92;
 const HEAD_R = 17.5, HEAD_H = 8, HEAD_TOP = BAR_Z1 + HEAD_H;
 const SPARK = { dx: -7.5, dy: 8, r: 2.6, h: 9 };
 const ROD = { r: 3.2, z0: HEAD_TOP - 8, z1: HEAD_TOP + 20 };
@@ -72,7 +69,7 @@ const RETURN = {
 
 const P = k.fitProjection(
   [
-    ...k.boxCorners(PLATE, -PLATE_H - FOOT_H, 0),
+    ...k.boxCorners(BED, 0, 0),
     [ENG.x, ENG.y, PUCK_Z + 12],
     [DRUM.x + DRUM.r + 6, DRUM.y, 134],
     [HOP.x - 14, HOP.y, 62],
@@ -86,29 +83,10 @@ const L = (d, s) => k.lineSvg(d, s);
 const D = (pts, s) => k.dotsSvg(pts, s);
 const band = (x, y, r, z, segs = 44) => k.sideArc(x, y, r, z, P, segs) + k.sideArc(x, y, r, z + 1.1, P, segs);
 
-/* ═══════════ 台面 ═══════════ */
-function bench() {
-  const out = [`<path class="iso-halo" d="${k.haloOf(PLATE, -PLATE_H - FOOT_H, PLATE_H, P)}"/>`];
-  for (const [x, y] of k.corners(PLATE, 24)) {
-    out.push(S(k.cylinder(x, y, 6.5, -PLATE_H - FOOT_H, 1.6, P, 28), { tone: "lo" }));
-    out.push(S(k.cylinder(x, y, 5, -PLATE_H - FOOT_H + 1.6, FOOT_H - 1.6, P, 28), { tone: "mid" }));
-  }
-  out.push(S(k.slabOf(PLATE, -PLATE_H, PLATE_H, P, 9, 1.6), { tone: "mid" }));
-  out.push(L(k.planOutline(k.insetPlan(PLATE, 5), 0, P), { tone: "lo" }));
-  const screws = k.corners(PLATE, 11);
-  out.push(L(screws.map(([x, y]) => k.ring(x, y, 2.2, 0, P, 16)).join(""), { tone: "lo" }));
-  out.push(D(screws.map(([x, y]) => at([x, y, 0])), { size: 0.5 }));
-  return out.join("");
-}
-function bedplate() {
-  const out = [];
-  for (const [x, y] of k.corners(BED, 14)) {
-    out.push(S(k.cylinder(x, y, 4, BED_Z - 3, 1.4, P, 24), { tone: "lo" }));
-    out.push(S(k.cylinder(x, y, 3, BED_Z - 1.6, 1.6, P, 24), { tone: "mid" }));
-  }
-  out.push(S(k.slabOf(BED, BED_Z - 5, BED_H + 5, P, 7, 1.2), { tone: "mid" }));
-  out.push(L(k.planOutline(k.insetPlan(BED, 4), BED_TOP, P), { tone: "lo" }));
-  return out.join("");
+/* ═══════════ 基准底板（唯一地面）═══════════ */
+function base() {
+  return `<path class="iso-halo" d="${k.haloOf(BED, 0, BED_H, P)}"/>` +
+    S(k.slabOf(BED, 0, BED_H, P, 7, 1.2), { tone: "mid" });
 }
 
 /* ═══════════ ① 进料斗（用户意图，一件大而简的形体）═══════════ */
@@ -119,60 +97,44 @@ function hopper() {
   for (const w of [
     { x: HOP.x - 13, y: HOP.y - 11, w: 26, d: 2.6, r: 1 }, // 后壁
     { x: HOP.x - 13, y: HOP.y + 8.4, w: 26, d: 2.6, r: 1 }, // 前壁
-    { x: HOP.x + 10.4, y: HOP.y - 11, w: 2.6, d: 22, r: 1 }, // 侧壁
   ]) {
     out.push(S(k.slabOf(w, 35, 16, P, 2, 0.4), { tone: "mid", crease: "lo" }));
   }
   // 斗内消息块（两块 hi 小板 = 排队意图）
   out.push(S(k.slabOf({ x: HOP.x - 9, y: HOP.y - 7, w: 15, d: 11, r: 1.5 }, 35, 3.4, P, 2, 0.4), { tone: "hi" }));
-  out.push(S(k.slabOf({ x: HOP.x - 9, y: HOP.y - 7, w: 15, d: 11, r: 1.5 }, 39.4, 3.4, P, 2, 0.4), { tone: "hi" }));
   // 落料管：斗底 → 缸侧进气口
   out.push(S(k.slabOf({ x: HOP.x - 2, y: HOP.y - 1.6, w: 4, d: 3.2, r: 1 }, BED_TOP, 35 - BED_TOP, P, 1.5, 0.3), { tone: "mid", crease: "none" }));
-  out.push(S(k.slabOf({ x: HOP.x - 2.6, y: HOP.y - 6, w: 5.2, d: 9, r: 1.5 }, 26, 3.4, P, 1.5, 0.3), { tone: "mid", crease: "lo" })); // 出料口
   return out.join("");
 }
 
 /* ═══════════ ② 汽缸（LLM：六冲程主体，唯一 lit）═══════════ */
 function engineStatic() {
   const out = [];
-  out.push(S(k.slabOf(COL, BED_TOP, 10, P, 4, 0.8), { tone: "lo" }));
-  out.push(S(k.slabOf(k.insetPlan(COL, 3.5), BED_TOP + 10, 5, P, 3, 0.5), { tone: "mid" }));
-  out.push(D([[COL.x + 6, COL.y + 6], [COL.x + COL.w - 6, COL.y + 6], [COL.x + 6, COL.y + COL.d - 6], [COL.x + COL.w - 6, COL.y + COL.d - 6]].map(([x, y]) => at([x, y, BED_TOP + 10])), { size: 0.45, tone: "lo" }));
+  out.push(S(k.slabOf(COL, BED_TOP, 8, P, 4, 0.8), { tone: "lo" }));
   out.push(S(k.cylinder(ENG.x, ENG.y, BAR_R, BAR_Z0, BAR_Z1 - BAR_Z0, P, 72, 1), { tone: "mid", crease: "lo" }));
-  for (const z of [42, 58, 74]) out.push(L(band(ENG.x, ENG.y, BAR_R + 0.05, z, 76), { tone: "lo" }));
   out.push(S(k.cylinder(ENG.x, ENG.y, HEAD_R, BAR_Z1, HEAD_H, P, 88, 1), { tone: "hi", crease: "lo" }));
-  out.push(L(k.ring(ENG.x, ENG.y, HEAD_R - 2.4, HEAD_TOP, P, 40), { tone: "lo" }));
-  out.push(D([0.7, 2.26, 3.84, 5.42].map((a) => at([ENG.x + Math.cos(a) * (HEAD_R - 4.2), ENG.y + Math.sin(a) * (HEAD_R - 4.2), HEAD_TOP + 0.9])), { size: 0.5 }));
   // 火花塞（点火 = LLM 调用；唯一 lit 部件）
   const sx = ENG.x + SPARK.dx, sy = ENG.y + SPARK.dy;
-  out.push(S(k.cylinder(sx, sy, 4.4, HEAD_TOP, 2.8, P, 22), { tone: "mid" }));
   out.push(S(k.cylinder(sx, sy, SPARK.r, HEAD_TOP + 2.8, SPARK.h, P, 20), { tone: "hi", lit: true }));
-  out.push(L(k.knurl(sx, sy, SPARK.r, HEAD_TOP + 3.8, HEAD_TOP + SPARK.h - 2, 22, P, 0.3), { tone: "lo" }));
   out.push(D([at([sx, sy, HEAD_TOP + SPARK.h + 1.4])], { size: 0.75, tone: "lit" }));
   // 进气/排气端口
   out.push(S(k.cylinder(HOP.x - 1, ENG.y + BAR_R - 2.4, 2.6, 26, 4, P, 16), { tone: "mid" }));
   out.push(S(k.cylinder(ENG.x + HEAD_R - 2, ENG.y, 2.6, 84, 4, P, 16), { tone: "mid" }));
-  // 仪表小台（缸座前伸）
-  out.push(S(k.slabOf(SHELF, BED_TOP, 5, P, 3, 0.5), { tone: "lo" }));
   return out.join("");
 }
 function pistonGroup() {
   const out = [];
   out.push(S(k.cylinder(ENG.x, ENG.y, ROD.r, ROD.z0, ROD.z1 - ROD.z0, P, 18), { tone: "hi", lit: true, crease: "none" }));
-  out.push(S(k.cylinder(ENG.x, ENG.y, ROD.r + 2, ROD.z1, 2.2, P, 22), { tone: "mid" }));
   out.push(S(k.cylinder(ENG.x, ENG.y, 5.8, PUCK_Z, 4.8, P, 26, 0.8), { tone: "hi", lit: true, crease: "lo" }));
-  out.push(L(k.ring(ENG.x, ENG.y, 3.2, PUCK_Z + 4.8, P, 18), { tone: "lo" }));
   return out.join("");
 }
 
 /* ═══════════ ③ 日志鼓（真相：只追加 + 视窗 + 压缩）═══════════ */
 function logDrum() {
   const out = [];
-  out.push(S(k.slabOf(FRAME, BED_TOP, 4, P, 3, 0.5), { tone: "lo" }));
   out.push(S(k.cylinder(DRUM.x, DRUM.y, DRUM.r + 3, BED_TOP, 3, P, 40), { tone: "lo" }));
   out.push(S(k.cylinder(DRUM.x, DRUM.y, DRUM.r, DRUM.z0, DRUM.z1 - DRUM.z0, P, 64, 1), { tone: "mid", crease: "lo" }));
   out.push(S(k.slabOf(SIGHT, DRUM.z0 + 2, DRUM.z1 - DRUM.z0 - 4, P, 2, 0.4), { tone: "lo", crease: "none" }));
-  out.push(D([at([SIGHT.x + 2.2, SIGHT.y + 2.2, DRUM.z0 + 2]), at([SIGHT.x + 2.2, SIGHT.y + SIGHT.d - 2.2, DRUM.z0 + 2])], { size: 0.42 }));
   out.push(L(band(DRUM.x, DRUM.y, DRUM.r + 0.05, MARK_Z, 64), { tone: "hi" }));
   out.push(k.faceTextSvg(k.topMatrix([DRUM.x - DRUM.r - 6, DRUM.y + 9], MARK_Z - 2, P, "x"), "68", { size: 2.2, tone: "lo", anchor: "end" }));
   return out.join("");
@@ -183,30 +145,27 @@ function ratchet() {
   const teeth = k.radialTicks(DRUM.x, DRUM.y, 6, 12, 4, DRUM.z1 + 3, [1.1, 2], P);
   out.push(L(teeth.minor, { tone: "lo" }), L(teeth.major, { tone: "mid" }));
   out.push(L(k.ring(DRUM.x, DRUM.y, 6, DRUM.z1 + 3, P, 30), { tone: "lo" }));
-  out.push(L(k.ring(DRUM.x, DRUM.y, 3.8, DRUM.z1 + 3, P, 26), { tone: "lo" }));
   // 棘爪（只进不退）
   out.push(S(k.cylinder(DRUM.x + 11.5, DRUM.y + 6, 2, DRUM.z1 + 1, 2.8, P, 16), { tone: "mid" }));
   out.push(S(k.slabOf({ x: DRUM.x + 7.4, y: DRUM.y + 4.6, w: 6.4, d: 3, r: 1 }, DRUM.z1 + 4.4, 1.4, P, 2), { tone: "hi", crease: "none" }));
   return out.join("");
 }
 function gateSleeve() {
-  return S(k.cylinder(DRUM.x, DRUM.y, GATE.r, 0, GATE.h, P, 68, 0.8), { tone: "mid", crease: "lo" }) +
-    S(k.slabOf({ x: DRUM.x - GATE.r - 5.4, y: DRUM.y - 2, w: 5.4, d: 4, r: 1 }, GATE.h - 2, 3, P, 2), { tone: "mid", crease: "none" });
+  return S(k.cylinder(DRUM.x, DRUM.y, GATE.r, 0, GATE.h, P, 68, 0.8), { tone: "mid", crease: "lo" });
 }
 const floatMark = () =>
   S(k.slabOf({ x: SIGHT.x - 0.6, y: SIGHT.y - 1, w: SIGHT.w + 1.2, d: SIGHT.d + 2, r: 1 }, 0, 1.5, P, 2), { tone: "hi" });
 function pressYoke() {
   const out = [];
   for (const dx of [-16, 16]) {
-    out.push(S(k.cylinder(DRUM.x + dx, DRUM.y, 2.2, DRUM.z0, 116 - DRUM.z0, P, 16), { tone: "mid", crease: "none" }));
+    out.push(S(k.cylinder(DRUM.x + dx, DRUM.y, 2.2, BED_TOP, 116 - BED_TOP, P, 16), { tone: "mid", crease: "none" }));
   }
   out.push(S(k.slabOf({ x: DRUM.x - 20, y: DRUM.y - 4, w: 40, d: 8, r: 2 }, 116, 5, P, 3, 0.5), { tone: "mid" }));
   return out.join("");
 }
 function pressRam() {
-  return S(k.cylinder(DRUM.x, DRUM.y, 3.8, 121, 3, P, 20), { tone: "lo" }) +
-    S(k.cylinder(DRUM.x, DRUM.y, 3, 109, 12, P, 16), { tone: "mid", crease: "none" }) +
-    S(k.cylinder(DRUM.x, DRUM.y, 8.5, 106, 3, P, 52, 0.8), { tone: "hi", crease: "lo" });
+  return S(k.cylinder(DRUM.x, DRUM.y, 3, 112, 12, P, 16), { tone: "mid", crease: "none" }) +
+    S(k.cylinder(DRUM.x, DRUM.y, 8.5, 109, 3, P, 52, 0.8), { tone: "hi", crease: "lo" });
 }
 function pellet(i) {
   // 压缩弹丸直接落在鼓座前缘（不再单独托盘）
@@ -222,7 +181,6 @@ function intakeDuct() {
   out.push(duct(INTAKE.runA, 30, 4));
   out.push(S(k.slabOf(INTAKE.elbow, 29, 6, P, 1.5, 0.3), { tone: "mid", crease: "lo" }));
   out.push(duct(INTAKE.runB, 30, 4));
-  out.push(S(k.cylinder(INTAKE.runB.x + INTAKE.runB.w - 2.4, 26, 3, 28, 8, P, 20, 0.5), { tone: "mid" }));
   return out.join("");
 }
 function returnDuct() {
@@ -238,13 +196,11 @@ function returnDuct() {
 /* ═══════════ 仪表（一台表 + 三保险丝，装在缸座小台上）═══════════ */
 function counterDial() {
   const out = [];
-  out.push(S(k.cylinder(COUNTER.x, COUNTER.y, 2.2, BED_TOP + 5, COUNTER.z - BED_TOP - 5, P, 16), { tone: "mid", crease: "none" }));
+  out.push(S(k.cylinder(COUNTER.x, COUNTER.y, 2.2, BED_TOP, COUNTER.z - BED_TOP, P, 16), { tone: "mid", crease: "none" }));
   out.push(S(k.cylinder(COUNTER.x, COUNTER.y, COUNTER.r, COUNTER.z, 4.4, P, 56, 0.8), { tone: "hi", crease: "lo" }));
-  out.push(L(k.knurl(COUNTER.x, COUNTER.y, COUNTER.r, COUNTER.z + 2, COUNTER.z + 4.4, 66, P, 0.3), { tone: "lo" }));
   const ticks = k.radialTicks(COUNTER.x, COUNTER.y, COUNTER.r - 2.2, 24, 6, COUNTER.z + 4.4, [1, 2.2], P);
   out.push(L(ticks.minor, { tone: "lo" }), L(ticks.major, { tone: "mid" }));
   out.push(L(k.ring(COUNTER.x, COUNTER.y, COUNTER.r - 2.2, COUNTER.z + 4.4, P, 44), { tone: "lo" }));
-  out.push(L(k.ring(COUNTER.x, COUNTER.y, COUNTER.r - 4.6, COUNTER.z + 4.4, P, 36), { tone: "lo" }));
   const arc = [];
   for (let a = Math.PI * 0.62; a <= Math.PI * 0.86; a += Math.PI / 110) {
     arc.push(k.iso([COUNTER.x + Math.cos(a) * (COUNTER.r - 3.3), COUNTER.y + Math.sin(a) * (COUNTER.r - 3.3), COUNTER.z + 4.4], P));
@@ -256,10 +212,9 @@ function counterDial() {
 }
 function fuse(fx, intact) {
   const out = [];
-  out.push(S(k.cylinder(fx, FUSE_Y, 3, BED_TOP + 5, 1.6, P, 18), { tone: "lo" }));
-  out.push(S(k.cylinder(fx, FUSE_Y, 2.2, BED_TOP + 6.6, intact ? 10 : 5.4, P, 18, 0.8), { tone: intact ? "mid" : "lo", crease: "lo" }));
-  out.push(L(k.ring(fx, FUSE_Y, 1.2, BED_TOP + 6.6 + (intact ? 10 : 5.4), P, 14), { tone: "lo" }));
-  if (!intact) out.push(L(band(fx, FUSE_Y, 2.2, BED_TOP + 12, 18), { tone: "hi" }));
+  out.push(S(k.cylinder(fx, FUSE_Y, 3, BED_TOP, 1.6, P, 18), { tone: "lo" }));
+  out.push(S(k.cylinder(fx, FUSE_Y, 2.2, BED_TOP + 1.6, intact ? 10 : 5.4, P, 18, 0.8), { tone: intact ? "mid" : "lo", crease: "lo" }));
+  if (!intact) out.push(L(band(fx, FUSE_Y, 2.2, BED_TOP + 7, 18), { tone: "hi" }));
   return out.join("");
 }
 const FUSES_INTACT = FUSE_XS.map((fx) => fuse(fx, true)).join("");
@@ -280,8 +235,7 @@ const svg = k.figureSvg({
   label:
     "Simple six-stroke agent engine. One story, left to right: intent drops into the hopper; the cylinder fires one stroke per LLM call (piston puck = the current message); every tool result is appended onto the ratcheted drum — the append-only session log. The intake duct feeds the cylinder only the context view (sliding sleeve = summary plus tail); past the 68% mark the yoke press folds the head into a gold pellet and the sight-glass level falls. The dial's red zone at 24 is the iteration cap; three straight failures break the fuses.",
   body: [
-    bench(),
-    bedplate(),
+    base(),
     hopper(),
     engineStatic(),
     `<g data-part="piston">${pistonGroup()}</g>`,
