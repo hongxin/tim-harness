@@ -84,6 +84,7 @@ interface PipeTurn {
   thinkSteps: string[]
   tools: Array<{ name: string; ok: boolean; dur: number; desc?: string }>
   finalText: string
+  isPreCompact?: boolean
 }
 
 interface PipelineData {
@@ -91,6 +92,7 @@ interface PipelineData {
   totalTokens: number
   contextUsed: number
   contextMax: number
+  compactFoldedCount?: number
 }
 
 function parseTurns(
@@ -101,40 +103,38 @@ function parseTurns(
 ): PipelineData {
   const turns: PipeTurn[] = []
   let current: PipeTurn | null = null
-  const toolResults = new Map<string, { ok: boolean; dur: number }>()
 
-  // compacted 历史不丢弃——显示为压缩核心段（修复2）
-  if (folded > 0) {
-    turns.push({
-      turnId: 0,
-      userText: `⚡ Compact (${folded} msgs)`,
-      thinkSteps: [],
-      tools: [],
-      finalText: '已压缩',
-    })
-  }
+  // 修复 A：解析全部消息（不 slice），compact 前标记 isPreCompact
+  for (let mi = 0; mi < msgs.length; mi++) {
+    const msg = msgs[mi]
+    const isPre = mi < folded
 
-  for (const msg of msgs.slice(folded)) {
     if (msg.role === 'user') {
-      current = { turnId: turns.length + 1, userText: (msg.content ?? '').slice(0, 30), thinkSteps: [], tools: [], finalText: '' }
+      current = {
+        turnId: turns.length + 1,
+        userText: (msg.content ?? '').slice(0, 40),
+        thinkSteps: [], tools: [], finalText: '',
+        isPreCompact: isPre,
+      }
       turns.push(current)
     } else if (msg.role === 'assistant' && current) {
       if (msg.tool_calls) {
-        current.thinkSteps.push(`${msg.tool_calls.length} 个工具`)
-        for (const tc of msg.tool_calls) current.tools.push({ name: tc.name, ok: true, dur: 0, desc: TOOL_DESC[tc.name] ?? '' })
+        current.thinkSteps.push(`${msg.tool_calls.length} tools`)
+        for (const tc of msg.tool_calls) {
+          current.tools.push({ name: tc.name, ok: true, dur: 0, desc: TOOL_DESC[tc.name] ?? '' })
+        }
       } else if (msg.content) {
         current.finalText = msg.content.slice(0, 30)
       }
-    } else if (msg.role === 'tool' && current && msg.tool_call_id) {
-      toolResults.set(msg.tool_call_id, { ok: msg.toolOk !== false, dur: msg.durationMs ?? 0 })
-      const t = current.tools.find((tt) => !tt.dur)
+    } else if (msg.role === 'tool' && current) {
+      const t = current.tools.find((tt) => tt.name === msg.name && !tt.dur)
       if (t) { t.ok = msg.toolOk !== false; t.dur = msg.durationMs ?? 0 }
     }
   }
 
-  // 应用重复折叠（R5）
+  // 修复 B：折叠阈值降为 2（连续 2 个同类即折叠）
   for (const turn of turns) {
-    turn.tools = foldRepeats(turn.tools) as typeof turn.tools
+    turn.tools = foldRepeats(turn.tools, 2) as typeof turn.tools
   }
 
   return {
@@ -142,13 +142,9 @@ function parseTurns(
     totalTokens: usage?.total_tokens ?? 0,
     contextUsed: contextInfo?.sentChars ?? 0,
     contextMax: contextInfo?.budgetChars ?? 1,
+    compactFoldedCount: folded,
   }
 }
-
-/* ═════════════════════════════════════════════════
-   渲染器
-   ═════════════════════════════════════════════════ */
-
 export class PipelineRenderer {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
@@ -255,7 +251,7 @@ export class PipelineRenderer {
     for (let ti = 0; ti < turns.length; ti++) {
       const turn = turns[ti]
       const pipeX = ti * (PIPE_W + GAP_H) + 20
-      const tAlpha = temporalAlpha(ti, turns.length)
+      const tAlpha = temporalAlpha(ti, turns.length) * (turn.isPreCompact ? 0.5 : 1.0)
       ctx.globalAlpha = tAlpha
       this.drawPipeline(ctx, turn, pipeX, t, now)
       ctx.globalAlpha = 1
@@ -347,7 +343,7 @@ export class PipelineRenderer {
     ctx.fillStyle = C.text
     ctx.font = `${14 * this.zoom}px -apple-system, sans-serif`
     ctx.textAlign = 'left'
-    drawTextSafe(ctx, turn.userText, px + pw / 2 + 10 * this.zoom, py + uh * 0.38, pw * 0.4, 'left')
+    drawTextSafe(ctx, (turn.isPreCompact ? '⚡ ' : '') + turn.userText, px + pw / 2 + 10 * this.zoom, py + uh * 0.38, pw * 0.4, 'left')
     // 副标签（回合编号）
     ctx.fillStyle = C.textDim
     ctx.font = `${10 * this.zoom}px monospace`
