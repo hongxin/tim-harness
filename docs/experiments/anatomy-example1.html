@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Anatomy 风格对照：例子 1</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0A0E14; color:#E6EDF3; font-family:ui-monospace,'SF Mono',Menlo,monospace; overflow-x:auto; }
+  svg { min-width:1200px; width:100%; height:auto; display:block; }
+
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes flow { to { stroke-dashoffset:-20; } }
+  @keyframes pulse { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+  @keyframes drop { 0% { transform:translateY(0); opacity:1; } 100% { transform:translateY(15px); opacity:0; } }
+
+  .gear { transform-origin:center; animation:spin 4s linear infinite; }
+  .gear-fast { transform-origin:center; animation:spin 1.5s linear infinite; }
+  .flow-line { stroke-dasharray:6 4; animation:flow .8s linear infinite; }
+  .pulse { animation:pulse 2s ease-in-out infinite; }
+  .droplet { animation:drop 1s ease-in infinite; }
+
+  .title { font-size:16px; fill:#E6EDF3; font-weight:600; }
+  .subtitle { font-size:11px; fill:#9DA7B3; }
+  .label { font-size:10px; fill:#9DA7B3; }
+  .label-val { font-size:11px; fill:#E6EDF3; font-weight:500; }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1200 600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="600" fill="#0A0E14"/>
+
+  <text x="600" y="28" text-anchor="middle" class="title">
+    "做一张极简自我介绍卡片" — 全过程
+  </text>
+  <text x="600" y="46" text-anchor="middle" class="subtitle">
+    3 步完成 · 847 tokens · 总耗时 0.4s
+  </text>
+
+  <!-- ═══ 主流程：从左到右 ═══ -->
+
+  <!-- 1. 用户输入 -->
+  <g transform="translate(60,150)">
+    <rect width="130" height="80" rx="8" fill="#1C2128" stroke="#FF6B9D" stroke-width="1.5"/>
+    <text x="65" y="22" text-anchor="middle" font-size="20">👤</text>
+    <text x="65" y="42" text-anchor="middle" class="label-val" fill="#FF6B9D">用户需求</text>
+    <text x="65" y="58" text-anchor="middle" class="label">极简介绍卡片</text>
+    <text x="65" y="72" text-anchor="middle" class="label" fill="#666">"减少token消耗"</text>
+  </g>
+
+  <!-- 连接线：用户→思考 -->
+  <line x1="190" y1="190" x2="260" y2="190" stroke="#4A9EFF" stroke-width="2" class="flow-line"/>
+
+  <!-- 2. 智能体决策（核心齿轮）-->
+  <g transform="translate(260,120)">
+    <rect width="160" height="140" rx="8" fill="#1C2128" stroke="#FFD700" stroke-width="2"/>
+    <text x="80" y="20" text-anchor="middle" class="label-val" fill="#FFD700">智能体决策</text>
+    <!-- 大齿轮 -->
+    <g class="gear" style="transform-origin:60px 65px">
+      <circle cx="60" cy="65" r="28" fill="none" stroke="#FFD700" stroke-width="2"/>
+      <circle cx="60" cy="65" r="20" fill="none" stroke="#FFD700" stroke-width="1" opacity=".5"/>
+      <g stroke="#FFD700" stroke-width="2">
+        <line x1="60" y1="37" x2="60" y2="30"/><line x1="60" y1="93" x2="60" y2="100"/>
+        <line x1="32" y1="65" x2="25" y2="65"/><line x1="88" y1="65" x2="95" y2="65"/>
+        <line x1="40" y1="45" x2="35" y2="40"/><line x1="80" y1="85" x2="85" y2="90"/>
+        <line x1="80" y1="45" x2="85" y2="40"/><line x1="40" y1="85" x2="35" y2="90"/>
+      </g>
+      <circle cx="60" cy="65" r="6" fill="#FFD700" opacity=".3"/>
+    </g>
+    <!-- 小齿轮（反向）-->
+    <g class="gear" style="transform-origin:115px 85px; animation-direction:reverse; animation-duration:2s">
+      <circle cx="115" cy="85" r="14" fill="none" stroke="#FFD700" stroke-width="1.5"/>
+      <circle cx="115" cy="85" r="9" fill="none" stroke="#FFD700" stroke-width="1" opacity=".4"/>
+      <g stroke="#FFD700" stroke-width="1.5">
+        <line x1="115" y1="71" x2="115" y2="66"/><line x1="115" y1="99" x2="115" y2="104"/>
+        <line x1="101" y1="85" x2="96" y2="85"/><line x1="129" y1="85" x2="134" y2="85"/>
+      </g>
+    </g>
+    <!-- 决策文本 -->
+    <text x="80" y="115" text-anchor="middle" class="label">策略：极简路径</text>
+    <text x="80" y="128" text-anchor="middle" class="label" fill="#FFD700" opacity=".6">3 步 · 最少调用</text>
+  </g>
+
+  <!-- 连接线：思考→工具流水线 -->
+  <line x1="420" y1="190" x2="490" y2="190" stroke="#4A9EFF" stroke-width="2" class="flow-line"/>
+
+  <!-- 3. 工具执行流水线（垂直排列）-->
+  <g transform="translate(490,90)">
+    <rect width="200" height="230" rx="8" fill="#1C2128" stroke="#00E5FF" stroke-width="1.5"/>
+    <text x="100" y="22" text-anchor="middle" class="label-val" fill="#00E5FF">工具执行</text>
+
+    <!-- 工具 1：skill 装载 -->
+    <g transform="translate(20,40)">
+      <rect width="160" height="42" rx="5" fill="#00E5FF10" stroke="#00E5FF50"/>
+      <text x="12" y="18" font-size="14">📚</text>
+      <text x="34" y="18" class="label-val" fill="#9370DB">skill</text>
+      <text x="34" y="32" class="label">装载设计品味</text>
+      <circle cx="148" cy="12" r="4" fill="#00FF88"/>
+      <text x="148" y="34" text-anchor="middle" class="label" fill="#00FF88">180ms</text>
+    </g>
+    <!-- 箭头 -->
+    <path d="M 100 82 L 100 92" stroke="#00E5FF50" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- 工具 2：write_file -->
+    <g transform="translate(20,96)">
+      <rect width="160" height="42" rx="5" fill="#00E5FF10" stroke="#00E5FF50"/>
+      <text x="12" y="18" font-size="14">✍️</text>
+      <text x="34" y="18" class="label-val" fill="#FF8C00">write_file</text>
+      <text x="34" y="32" class="label">card.html · 1.2KB</text>
+      <circle cx="148" cy="12" r="4" fill="#00FF88"/>
+      <text x="148" y="34" text-anchor="middle" class="label" fill="#00FF88">120ms</text>
+    </g>
+    <path d="M 100 138 L 100 148" stroke="#00E5FF50" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- 工具 3：edit_file -->
+    <g transform="translate(20,152)">
+      <rect width="160" height="42" rx="5" fill="#00E5FF10" stroke="#00E5FF50"/>
+      <text x="12" y="18" font-size="14">✂️</text>
+      <text x="34" y="18" class="label-val" fill="#FF69B4">edit_file</text>
+      <text x="34" y="32" class="label">精调 3 处样式</text>
+      <circle cx="148" cy="12" r="4" fill="#00FF88"/>
+      <text x="148" y="34" text-anchor="middle" class="label" fill="#00FF88">95ms</text>
+    </g>
+
+    <!-- 流水线底部注释 -->
+    <text x="100" y="215" text-anchor="middle" class="label" fill="#666">串行执行 · 总计 395ms</text>
+  </g>
+
+  <!-- 连接线：工具→输出 -->
+  <line x1="690" y1="190" x2="760" y2="190" stroke="#4A9EFF" stroke-width="2" class="flow-line"/>
+
+  <!-- 4. 输出 -->
+  <g transform="translate(760,150)">
+    <rect width="130" height="80" rx="8" fill="#1C2128" stroke="#00FF88" stroke-width="2"/>
+    <text x="65" y="22" text-anchor="middle" font-size="18">✅</text>
+    <text x="65" y="42" text-anchor="middle" class="label-val" fill="#00FF88">输出</text>
+    <text x="65" y="58" text-anchor="middle" class="label">极简卡片完成</text>
+    <text x="65" y="72" text-anchor="middle" class="label" fill="#00FF88">3 步 · 0.4s</text>
+  </g>
+
+  <!-- ═══ 底部：约束仪表 ═══ -->
+  <g transform="translate(60,420)">
+    <text x="0" y="15" class="label-val">📊 资源消耗</text>
+
+    <!-- 上下文容器 -->
+    <g transform="translate(0,35)">
+      <rect width="250" height="60" rx="6" fill="#161B22" stroke="#30363D"/>
+      <text x="12" y="18" class="label">上下文窗口</text>
+      <!-- 液位 -->
+      <rect x="12" y="26" width="226" height="24" rx="3" fill="#21262D"/>
+      <rect x="12" y="26" width="45" height="24" rx="3" fill="#23863630"/>
+      <rect x="12" y="26" width="45" height="24" rx="3" fill="#238636" opacity=".4"/>
+      <text x="125" y="42" text-anchor="middle" class="label" fill="#238636">18% (847/64K)</text>
+    </g>
+
+    <!-- Token 燃料 -->
+    <g transform="translate(270,35)">
+      <rect width="180" height="60" rx="6" fill="#161B22" stroke="#30363D"/>
+      <text x="12" y="18" class="label">Token 消耗</text>
+      <text x="12" y="42" class="label-val" fill="#FFA500">⚡ 847 tokens</text>
+      <text x="120" y="42" class="label" fill="#666">≈ ¥0.001</text>
+    </g>
+
+    <!-- 缓存命中 -->
+    <g transform="translate(470,35)">
+      <rect width="180" height="60" rx="6" fill="#161B22" stroke="#30363D"/>
+      <text x="12" y="18" class="label">缓存命中</text>
+      <circle cx="24" cy="42" r="6" fill="#00FF88" class="pulse"/>
+      <text x="40" y="46" class="label" fill="#00FF88">前缀缓存 ✓ 高效</text>
+    </g>
+  </g>
+
+  <!-- ═══ 底部：执行时间线 ═══ -->
+  <g transform="translate(60,510)">
+    <text x="0" y="12" class="label-val">⏱ 执行时间线</text>
+    <!-- 时间轴 -->
+    <line x1="0" y1="40" x2="860" y2="40" stroke="#30363D" stroke-width="2"/>
+    <!-- 各步骤的时段 -->
+    <rect x="0" y="32" width="60" height="16" rx="2" fill="#FF6B9D60" />
+    <text x="30" y="60" text-anchor="middle" class="label" fill="#FF6B9D">输入</text>
+    <rect x="65" y="32" width="80" height="16" rx="2" fill="#FFD70060"/>
+    <text x="105" y="60" text-anchor="middle" class="label" fill="#FFD700">决策</text>
+    <rect x="150" y="32" width="180" height="16" rx="2" fill="#00E5FF60"/>
+    <text x="240" y="60" text-anchor="middle" class="label" fill="#00E5FF">工具执行</text>
+    <rect x="335" y="32" width="60" height="16" rx="2" fill="#00FF8860"/>
+    <text x="365" y="60" text-anchor="middle" class="label" fill="#00FF88">输出</text>
+    <!-- 总时长标注 -->
+    <text x="860" y="28" text-anchor="end" class="label">总耗时: 0.4s</text>
+  </g>
+
+  <!-- 箭头 marker -->
+  <defs>
+    <marker id="arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#00E5FF80"/>
+    </marker>
+  </defs>
+</svg>
+</body>
+</html>

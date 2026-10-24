@@ -259,6 +259,7 @@ export class PipelineRenderer {
 
     // ═══ 底部约束条 ═══
     this.drawConstraintBar(ctx)
+    this.drawTimeline(ctx)
   }
 
   /* ════════════════════════════════════════════════
@@ -315,20 +316,37 @@ export class PipelineRenderer {
     ctx.strokeStyle = C.think + '70'
     ctx.lineWidth = 1.5
     ctx.beginPath(); ctx.roundRect(px, py, pw, th, 6); ctx.fill(); ctx.stroke()
-    // 旋转齿轮
-    const gearR = 16 * this.zoom
-    const gx = px + pw / 2, gy = py + th * 0.4
-    ctx.save(); ctx.translate(gx, gy); ctx.rotate(now / 1500)
+    // 大齿轮 + 反向小齿轮（Anatomy 咬合感）
+    const gearR = 18 * this.zoom
+    const gx = px + pw * 0.38, gy = py + th * 0.42
+    // 大齿轮
+    ctx.save(); ctx.translate(gx, gy); ctx.rotate(now / 1200)
     ctx.strokeStyle = C.think + '90'
     ctx.lineWidth = 2
-    for (let i = 0; i < 6; i++) {
-      const a = i / 6 * Math.PI * 2
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2
       ctx.beginPath()
-      ctx.moveTo(Math.cos(a) * gearR * 0.5, Math.sin(a) * gearR * 0.5)
+      ctx.moveTo(Math.cos(a) * gearR * 0.55, Math.sin(a) * gearR * 0.55)
       ctx.lineTo(Math.cos(a) * gearR, Math.sin(a) * gearR)
       ctx.stroke()
     }
-    ctx.beginPath(); ctx.arc(0, 0, gearR * 0.5, 0, Math.PI * 2); ctx.stroke()
+    ctx.beginPath(); ctx.arc(0, 0, gearR * 0.55, 0, Math.PI * 2); ctx.stroke()
+    ctx.beginPath(); ctx.arc(0, 0, gearR * 0.15, 0, Math.PI * 2); ctx.stroke()
+    ctx.restore()
+    // 小齿轮（反向）
+    const sgx = px + pw * 0.68, sgy = py + th * 0.55
+    const sgR = gearR * 0.5
+    ctx.save(); ctx.translate(sgx, sgy); ctx.rotate(-now / 700)
+    ctx.strokeStyle = C.think + '60'
+    ctx.lineWidth = 1.5
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2
+      ctx.beginPath()
+      ctx.moveTo(Math.cos(a) * sgR * 0.5, Math.sin(a) * sgR * 0.5)
+      ctx.lineTo(Math.cos(a) * sgR, Math.sin(a) * sgR)
+      ctx.stroke()
+    }
+    ctx.beginPath(); ctx.arc(0, 0, sgR * 0.5, 0, Math.PI * 2); ctx.stroke()
     ctx.restore()
     // 标签
     ctx.fillStyle = C.think
@@ -353,13 +371,30 @@ export class PipelineRenderer {
       ctx.fillStyle = C.textDim
       ctx.font = `${10 * this.zoom}px monospace`
       ctx.fillText(tool.name, px + 38 * this.zoom, py + toolH / 2)
-      // 状态 + 耗时
-      const statusIcon = tool.ok ? '✓' : '✗'
-      ctx.fillStyle = tool.ok ? C.done : C.error
-      ctx.font = `${10 * this.zoom}px sans-serif`
-      ctx.textAlign = 'right'
-      const durText = tool.dur > 500 ? `${(tool.dur / 1000).toFixed(1)}s` : ''
-      ctx.fillText(`${statusIcon} ${durText}`, px + pw - 18 * this.zoom, py + toolH / 2)
+      // 状态指示灯（圆形，非文字符号）
+      const statusColor = tool.ok ? C.done : C.error
+      const lightR = 3.5 * this.zoom
+      const lightX = px + pw - 30 * this.zoom
+      const lightY = py + toolH / 2
+      if (!tool.ok) {
+        // 失败：闪烁
+        const blink = Math.sin(now / 200) > 0
+        ctx.fillStyle = blink ? C.error : C.error + '40'
+      } else {
+        ctx.fillStyle = statusColor + '90'
+      }
+      ctx.beginPath(); ctx.arc(lightX, lightY, lightR, 0, Math.PI * 2); ctx.fill()
+      // 光晕
+      ctx.fillStyle = statusColor + '20'
+      ctx.beginPath(); ctx.arc(lightX, lightY, lightR * 1.8, 0, Math.PI * 2); ctx.fill()
+      // 耗时（等宽字体，右对齐）
+      if (tool.dur > 0) {
+        ctx.fillStyle = C.textDim
+        ctx.font = `${9 * this.zoom}px monospace`
+        ctx.textAlign = 'right'
+        const durText = tool.dur > 1000 ? `${(tool.dur / 1000).toFixed(1)}s` : `${tool.dur}ms`
+        ctx.fillText(durText, px + pw - 40 * this.zoom, py + toolH / 2)
+      }
       py += toolH + gap * 0.5
     }
     py += gap * 0.5
@@ -416,6 +451,14 @@ export class PipelineRenderer {
 
     // Token 燃料
     const tokenY = bar1Y + bar1H + 10
+    // 成本估算（token ≈ 人民币）
+    if (this.data.totalTokens > 0) {
+      const costCNY = this.data.totalTokens * 0.0000014 // 假设 1.4 CNY/M tokens
+      ctx.fillStyle = C.textDim + '90'
+      ctx.font = '8px monospace'
+      ctx.textAlign = 'right'
+      ctx.fillText(`≈ ¥${costCNY.toFixed(4)}`, barX + barW - 8, tokenY + bar1H + 14)
+    }
     ctx.fillStyle = C.textDim
     ctx.fillText('Token', barX + 10, tokenY - 2)
     ctx.fillStyle = C.flow + '60'
@@ -423,6 +466,60 @@ export class PipelineRenderer {
     ctx.beginPath(); ctx.roundRect(barX + 70, tokenY, (barW - 180) * tokenRatio, bar1H, 2); ctx.fill()
     ctx.fillStyle = C.flow
     ctx.fillText(`${this.data.totalTokens.toLocaleString()}`, barX + barW - 100, tokenY + bar1H - 1)
+  }
+
+
+  /* ════════════════════════════════════════════════
+     执行时间线（各阶段耗时比例）
+     ════════════════════════════════════════════════ */
+
+  private drawTimeline(ctx: CanvasRenderingContext2D) {
+    if (!this.data || this.data.turns.length === 0) return
+    const barY = this.h - 18
+    const barW = Math.min(this.w - 40, 600)
+    const barX = (this.w - barW) / 2
+
+    // 标签
+    ctx.fillStyle = C.textDim + '80'
+    ctx.font = '8px monospace'
+    ctx.textAlign = 'left'
+    ctx.fillText('⏱', barX - 15, barY + 4)
+
+    // 计算各阶段总耗时
+    let inputTime = 0, thinkTime = 0, toolTime = 0
+    for (const turn of this.data.turns) {
+      inputTime += 50 // 用户输入假设 50ms
+      thinkTime += 200 // 推理假设 200ms
+      for (const t of turn.tools) toolTime += t.dur
+    }
+    const totalTime = Math.max(inputTime + thinkTime + toolTime, 1)
+
+    // 分段条
+    let x = barX
+    const segments: Array<[string, number, string]> = [
+      ['输入', inputTime, C.user],
+      ['推理', thinkTime, C.think],
+      ['工具', toolTime, C.tool],
+    ]
+    for (const [label, time, color] of segments) {
+      const w = (time / totalTime) * barW
+      if (w > 2) {
+        ctx.fillStyle = color + '50'
+        ctx.beginPath(); ctx.roundRect(x, barY, w - 1, 8, 2); ctx.fill()
+        if (w > 30) {
+          ctx.fillStyle = color
+          ctx.font = '7px monospace'
+          ctx.textAlign = 'center'
+          ctx.fillText(label, x + w / 2, barY + 13)
+        }
+      }
+      x += w
+    }
+    // 总时长
+    ctx.fillStyle = C.textDim
+    ctx.font = '8px monospace'
+    ctx.textAlign = 'right'
+    ctx.fillText(`总 ${totalTime}ms`, barX + barW + 5, barY + 6)
   }
 }
 
