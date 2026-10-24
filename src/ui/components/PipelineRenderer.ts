@@ -159,18 +159,19 @@ export class PipelineRenderer {
 
   private fit() {
     if (!this.data || this.data.turns.length === 0) return
-    // 计算总内容尺寸
     const maxTools = Math.max(...this.data.turns.map(t => t.tools.length), 1)
-    const totalW = this.data.turns.length * (PIPE_W + GAP_H) - GAP_H
-    const totalH = HEADER_H + USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4 + FOOTER_H
-    // 适配 + 居中
-    this.zoom = Math.min(this.w / totalW, this.h / totalH, 1.2)
+    // 总宽度：含边距（每管道 ±10px 底座 + 首尾 30px padding）
+    const PADDING = 30
+    const totalW = this.data.turns.length * (PIPE_W + GAP_H) - GAP_H + PADDING * 2 + this.data.turns.length * 20
+    const totalH = HEADER_H + USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4 + FOOTER_H + 40
+    // 缩放必须让所有内容都在画布内
+    this.zoom = Math.min(this.w / totalW, (this.h - FOOTER_H) / (totalH - FOOTER_H), 1.0)
     // 水平居中
-    const scaledW = totalW * this.zoom
-    this.offsetX = (this.w - scaledW) / 2
-    // 垂直居中（考虑底部仪表）
-    const scaledH = (totalH - FOOTER_H) * this.zoom
-    this.offsetY = Math.max(10, (this.h - FOOTER_H - scaledH) / 2)
+    const scaledContentW = (totalW - PADDING * 2) * this.zoom
+    this.offsetX = (this.w - scaledContentW) / 2
+    // 垂直留出顶部空间
+    const contentH = (totalH - FOOTER_H - 40) * this.zoom
+    this.offsetY = Math.max(20, (this.h - FOOTER_H - contentH) / 2)
   }
 
   private w2s(wx: number, wy: number): [number, number] {
@@ -253,21 +254,30 @@ export class PipelineRenderer {
       const [sx1, sy1] = this.w2s(x1, y)
       const [sx2, sy2] = this.w2s(x2, y)
       // 流动箭头线
-      ctx.strokeStyle = C.flow + '60'
-      ctx.lineWidth = 2
-      ctx.setLineDash([])
+      // 物理管道连接（带法兰和流动粒子）
+      ctx.strokeStyle = 'rgba(74, 158, 255, 0.4)'
+      ctx.lineWidth = 5
       ctx.beginPath()
       ctx.moveTo(sx1 + 4, sy1)
-      ctx.lineTo(sx2 - 12, sy2)
-      ctx.stroke()
-      // 箭头
-      ctx.fillStyle = C.flow
-      ctx.beginPath()
-      ctx.moveTo(sx2 - 12, sy2 - 5)
       ctx.lineTo(sx2 - 4, sy2)
-      ctx.lineTo(sx2 - 12, sy2 + 5)
-      ctx.closePath()
-      ctx.fill()
+      ctx.stroke()
+      // 内壁亮线
+      ctx.strokeStyle = 'rgba(74, 158, 255, 0.7)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(sx1 + 4, sy1)
+      ctx.lineTo(sx2 - 4, sy2)
+      ctx.stroke()
+      // 法兰（两端圆形接口）
+      for (const [fx, fy] of [[sx1 + 4, sy1], [sx2 - 4, sy2]]) {
+        ctx.fillStyle = 'rgba(74, 158, 255, 0.3)'
+        ctx.beginPath(); ctx.arc(fx, fy, 4, 0, Math.PI * 2); ctx.fill()
+      }
+      // 流动粒子
+      const pt = (t * 0.4 + ti * 0.33) % 1
+      const px2 = sx1 + 4 + (sx2 - 8 - sx1) * pt
+      ctx.fillStyle = '#4A9EFF'
+      ctx.beginPath(); ctx.arc(px2, sy1, 3, 0, Math.PI * 2); ctx.fill()
       // 连接标签
       if (this.zoom > 0.5) {
         ctx.fillStyle = C.textDim + '50'
@@ -275,11 +285,7 @@ export class PipelineRenderer {
         ctx.textAlign = 'center'
         ctx.fillText('→', (sx1 + sx2) / 2, sy1 - 8)
       }
-      // 流动粒子
-      const pt = (t * 0.5 + ti * 0.3) % 1
-      const px = sx1 + 4 + (sx2 - 12 - sx1 - 4) * pt
-      ctx.fillStyle = C.flow + '90'
-      ctx.beginPath(); ctx.arc(px, sy1, 3, 0, Math.PI * 2); ctx.fill()
+      
     }
 
     // ═══ 底部约束条 ═══
@@ -400,29 +406,41 @@ export class PipelineRenderer {
       const toolH = TOOL_H * this.zoom
       // 工具行背景
       const toolHue = tool.ok ? 190 : 0
+      const toolSat = tool.ok ? 60 : 90
+      const toolLight = tool.ok ? 15 : 30
       drawPanel(ctx, px + 16 * this.zoom, py, pw - 32 * this.zoom, toolH, {
-        hue: toolHue, sat: 60, light: 15, depth: 2 * this.zoom
-      }, now, { screws: this.zoom > 0.6 })
+        hue: toolHue, sat: toolSat, light: toolLight, depth: 2 * this.zoom
+      }, now, { screws: this.zoom > 0.6, glowAlpha: tool.ok ? 0 : 0.15 })
+      // 失败时加红色边框闪烁
+      if (!tool.ok) {
+        const blink = 0.4 + 0.3 * Math.sin(now / 300)
+        ctx.strokeStyle = `rgba(255, 68, 68, ${blink})`
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.roundRect(px + 16 * this.zoom - 1, py - 1, pw - 32 * this.zoom + 2, toolH + 2, 4)
+        ctx.stroke()
+      }
       // 工具图标
       ctx.font = `${18 * this.zoom}px sans-serif`
       ctx.textAlign = 'left'
       ctx.fillText(toolIcon(tool.name), px + 24 * this.zoom, py + toolH / 2)
       // 工具名
       // 名称（第一行，稍大）
-      ctx.fillStyle = C.text
+      ctx.fillStyle = tool.ok ? C.text : '#FF6666'
       ctx.font = `${13 * this.zoom}px ui-monospace, monospace`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'alphabetic'
-      ctx.fillText(tool.name, px + 50 * this.zoom, py + toolH * 0.38)
+      // 失败工具加警告前缀
+      ctx.fillText(tool.ok ? tool.name : `⚠ ${tool.name}`, px + 50 * this.zoom, py + toolH * 0.38)
       // 描述（第二行，更小更淡）
       if (tool.desc) {
-        ctx.fillStyle = C.textDim + '90'
+        ctx.fillStyle = tool.ok ? C.textDim + '90' : '#FF8888'
         ctx.font = `${10 * this.zoom}px -apple-system, sans-serif`
-        ctx.fillText(tool.desc, px + 50 * this.zoom, py + toolH * 0.72)
+        ctx.fillText(tool.ok ? tool.desc : '执行失败', px + 50 * this.zoom, py + toolH * 0.72)
       }
       // 状态指示灯（圆形，非文字符号）
       const statusColor = tool.ok ? C.done : C.error
-      const lightR = 3.5 * this.zoom
+      const lightR = 5 * this.zoom
       const lightX = px + pw - 36 * this.zoom
       const lightY = py + toolH / 2
       if (!tool.ok) {
@@ -492,22 +510,22 @@ export class PipelineRenderer {
     drawGauge(ctx, barX + 40, barY + 35, 24, Math.round(ctxRatio * 100), 100, 'Context', 140, performance.now())
 
     // Token 燃料
-    const tokenY = bar1Y + bar1H + 10
+    const tokenY = barY + 12 + barH - 20 + 10
     // 成本估算（token ≈ 人民币）
     if (this.data.totalTokens > 0) {
       const costCNY = this.data.totalTokens * 0.0000014 // 假设 1.4 CNY/M tokens
       ctx.fillStyle = C.textDim + '90'
       ctx.font = '9px monospace'
       ctx.textAlign = 'right'
-      ctx.fillText(`≈ ¥${costCNY.toFixed(4)}`, barX + barW - 8, tokenY + bar1H + 14)
+      ctx.fillText(`≈ ¥${costCNY.toFixed(4)}`, barX + barW - 8, tokenY + barH - 20 + 14)
     }
     ctx.fillStyle = C.textDim
     ctx.fillText('Token', barX + 10, tokenY - 2)
     ctx.fillStyle = C.flow + '60'
     const tokenRatio = Math.min(this.data.totalTokens / 100000, 1)
-    ctx.beginPath(); ctx.roundRect(barX + 70, tokenY, (barW - 180) * tokenRatio, bar1H, 2); ctx.fill()
+    ctx.beginPath(); ctx.roundRect(barX + 70, tokenY, (barW - 180) * tokenRatio, barH - 20, 2); ctx.fill()
     ctx.fillStyle = C.flow
-    ctx.fillText(`${this.data.totalTokens.toLocaleString()}`, barX + barW - 100, tokenY + bar1H - 1)
+    ctx.fillText(`${this.data.totalTokens.toLocaleString()}`, barX + barW - 100, tokenY + barH - 20 - 1)
   }
 
 
