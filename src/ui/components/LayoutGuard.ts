@@ -27,6 +27,23 @@ export interface LayoutContext {
    ═════════════════════════════════════════════════ */
 
 const TEXT_PADDING = 8 // 左右各 8px
+// 测量缓存（调研主题4："缓存测量结果避免每帧重算"）
+const measureCache = new Map<string, number>()
+function cachedMeasure(ctx: CanvasRenderingContext2D, text: string, font: string): number {
+  const key = `${font}|${text}`
+  let w = measureCache.get(key)
+  if (w === undefined) {
+    ctx.font = font
+    w = ctx.measureText(text).width
+    measureCache.set(key, w)
+    // 缓存上限 500 条
+    if (measureCache.size > 500) {
+      const first = measureCache.keys().next().value
+      measureCache.delete(first as string)
+    }
+  }
+  return w
+}
 
 export function fitText(
   ctx: CanvasRenderingContext2D,
@@ -36,16 +53,20 @@ export function fitText(
   if (maxWidth <= TEXT_PADDING * 2) return ''
 
   const availW = maxWidth - TEXT_PADDING * 2
-  const metrics = ctx.measureText(text)
+  const font = ctx.font
+  const textW = cachedMeasure(ctx, text, font)
 
-  if (metrics.width <= availW) return text
+  if (textW <= availW) return text
 
-  // 二分查找最大可显示字符数
+  // 调研主题4：面积太小（< 3字符宽）完全隐藏
+  if (availW < cachedMeasure(ctx, 'xxx', font)) return ''
+
+  // 二分查找（调研主题1："逐字符递减 + 度量验证"）
   let lo = 0, hi = text.length
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2)
     const candidate = text.slice(0, mid) + '…'
-    if (ctx.measureText(candidate).width <= availW) {
+    if (cachedMeasure(ctx, candidate, font) <= availW) {
       lo = mid
     } else {
       hi = mid - 1
@@ -90,9 +111,10 @@ export function clampToParent(
    R3: 同级不重叠
    ═════════════════════════════════════════════════ */
 
-export function rectsOverlap(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.w && a.x + a.w > b.x &&
-         a.y < b.y + b.h && a.y + a.h > b.y
+export function rectsOverlap(a: Rect, b: Rect, padding: number = 2): boolean {
+  // 调研主题5："AABB 间距 padding 2-4px"
+  return a.x < b.x + b.w + padding && a.x + a.w + padding > b.x &&
+         a.y < b.y + b.h + padding && a.y + a.h + padding > b.y
 }
 
 /** 推开重叠的矩形（b 往下移直到不重叠） */
@@ -122,7 +144,9 @@ export function temporalAlpha(
   const ageFromNewest = totalTurns - 1 - turnIndex
   const maxAge = totalTurns - 1
   const ratio = maxAge === 0 ? 0 : ageFromNewest / maxAge
-  return 1.0 - ratio * 0.5 // 1.0 → 0.5 (淡化但不消失)
+  // 调研主题2：非焦点 0.15-0.3，焦点 ≥ 0.85，对比度 ≥ 3:1
+  // 折衷：最老 0.3（可见但不喧宾夺主），最新 1.0
+  return 1.0 - ratio * 0.7 // 1.0 → 0.3
 }
 
 /* ═════════════════════════════════════════════════
