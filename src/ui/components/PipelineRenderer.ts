@@ -445,19 +445,32 @@ export class PipelineRenderer {
 
       const dx = bx - ax
       const dy = by - ay
+      
+      // 最小距离检查：如果锚点几乎重合（<15px），不画连接线
+      // 避免产生无意义的短线
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist < 15) continue
 
       // ═══ 路径点计算（正交布线）═══
       const points: Array<[number, number]> = [[ax, ay]]
+      
+      // 辅助函数：只添加与上一个点不同的坐标（避免零长度线段）
+      const addPoint = (x: number, y: number) => {
+        const last = points[points.length - 1]
+        if (Math.abs(last[0] - x) > 2 || Math.abs(last[1] - y) > 2) {
+          points.push([x, y])
+        }
+      }
 
       if (Math.abs(dy) < 8) {
         // 情况 1：同一行 → 纯直线
-        points.push([bx, by])
+        addPoint(bx, by)
       } else if (dx > 0 && Math.abs(dy) > 20) {
         // 情况 2：同行但不同高度 → L 形（先水平后垂直）
         const midX = ax + dx * 0.6
-        points.push([midX, ay])
-        points.push([midX, by])
-        points.push([bx, by])
+        addPoint(midX, ay)
+        addPoint(midX, by)
+        addPoint(bx, by)
       } else if (dx <= 0) {
         // 情况 3：换行（蛇形折返）→ U 形（右→下→左→到达）
         const rightOffset = 20 // 向右伸出一点再折返
@@ -467,9 +480,9 @@ export class PipelineRenderer {
       } else {
         // 情况 4：任意位置 → 简单 L 形
         const midY = (ay + by) / 2
-        points.push([ax, midY])
-        points.push([bx, midY])
-        points.push([bx, by])
+        addPoint(ax, midY)
+        addPoint(bx, midY)
+        addPoint(bx, by)
       }
 
       // ═══ 绘制路径（带圆角转弯）═══
