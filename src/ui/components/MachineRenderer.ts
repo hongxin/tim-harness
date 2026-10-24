@@ -320,6 +320,13 @@ export class MachineRenderer {
     this.autoFit()
   }
 
+  private w2s(wx: number, wy: number): [number, number] {
+    return [(wx + this.offsetX) * this.zoom + this.w / 2, (wy + this.offsetY) * this.zoom + this.h / 2]
+  }
+  private s2w(sx: number, sy: number): [number, number] {
+    return [(sx - this.w / 2) / this.zoom - this.offsetX, (sy - this.h / 2) / this.zoom - this.offsetY]
+  }
+
   private autoFit() {
     this.zoom = Math.min(this.w / 1400, this.h / 900)
     this.offsetX = -700
