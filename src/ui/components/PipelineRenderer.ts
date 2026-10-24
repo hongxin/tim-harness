@@ -43,8 +43,8 @@ const TOOL_DESC: Record<string, string> = {
   spawn_agent: '派生子代理', ask_user: '询问', snapshot_save: '保存快照',
 }
 
-const PIPE_W_MAX = 300; const PIPE_W_MIN = 140; const USER_H = 70; const THINK_H = 90
-const DONE_H = 56; const GAP_V = 14; const GAP_H = 60
+const PIPE_W_MAX = 300; const USER_H = 70; const THINK_H = 90
+const DONE_H = 56; const GAP_V = 14; const GAP_H = 20
 const FOOTER_H = 60
 
 interface ToolItem {
@@ -152,10 +152,13 @@ export class PipelineRenderer {
     if (!this.data || this.data.turns.length === 0) return
     const nTurns = this.data.turns.length
     const availW = this.w - 40
-    const maxPerRow = Math.min(8, Math.max(3, Math.floor(availW / (PIPE_W_MIN + GAP_H))))
-    const perRow = Math.min(nTurns, maxPerRow)
+    // 用户要求：每行固定 8 个，允许超出画布（用户可缩放）
+    const perRow = Math.min(nTurns, 8)
     const nRows = Math.ceil(nTurns / perRow)
-    this.pipeW = Math.min(PIPE_W_MAX, Math.max(PIPE_W_MIN, (availW - (perRow - 1) * GAP_H) / perRow))
+    // pipeW 取合理值：优先适配画布，但不低于 100px
+    // 超出画布没关系——用户可以缩放（用户明确说过）
+    const idealW = (availW - (perRow - 1) * 20) / perRow // 用更小的间距
+    this.pipeW = Math.max(100, idealW)
         this.rowHeight = USER_H + THINK_H + 50 + DONE_H + GAP_V * 4 + 20
     const contentW = perRow * (this.pipeW + GAP_H) - GAP_H
     const contentH = nRows * this.rowHeight
@@ -316,7 +319,7 @@ export class PipelineRenderer {
     }
 
     // 蛇形布局 + 物理节点初始化
-    const maxPerRow = Math.min(8, Math.max(3, Math.floor((this.w - 40) / (this.pipeW + GAP_H))))
+    const maxPerRow = 8 // 用户要求固定 8 个/行
     for (let ti = 0; ti < turns.length; ti++) {
       const turn = turns[ti]
       const nodeId = String(turn.turnId)
