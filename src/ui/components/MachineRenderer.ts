@@ -1,3 +1,4 @@
+import { layoutTreemap, TreemapCell } from './TreemapLayout'
 /**
  * MachineRenderer —— 装配线渲染引擎（Anatomy 编译器第三层）
  *
@@ -236,41 +237,6 @@ function drawStation(
    传送带绘制
    ═════════════════════════════════════════════════ */
 
-function drawConveyor(
-  ctx: CanvasRenderingContext2D,
-  x1: number, y1: number,
-  x2: number, y2: number,
-  now: number,
-  scale: number,
-  isBranch: boolean,
-): void {
-  ctx.save()
-
-  const w = isBranch ? 2 : 4 * scale
-  ctx.strokeStyle = isBranch ? DOPAMINE.conveyor + '40' : DOPAMINE.conveyor + '70'
-  ctx.lineWidth = w
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
-
-  // 滚动纹路
-  if (!isBranch) {
-    const dx = x2 - x1, dy = y2 - y1
-    const len = Math.sqrt(dx * dx + dy * dy) || 1
-    const ux = dx / len, uy = dy / len
-    const spacing = 14
-    const offset = (now / 25) % spacing
-    ctx.strokeStyle = DOPAMINE.conveyor + '40'
-    ctx.lineWidth = 1
-    for (let d = offset; d < len; d += spacing) {
-      const px = x1 + ux * d, py = y1 + uy * d
-      ctx.beginPath()
-      ctx.moveTo(px - uy * w * 0.5, py + ux * w * 0.5)
-      ctx.lineTo(px + uy * w * 0.5, py - ux * w * 0.5)
-      ctx.stroke()
-    }
-  }
-
-  ctx.restore()
-}
 
 /* ═════════════════════════════════════════════════
    仪表绘制
@@ -327,6 +293,7 @@ export class MachineRenderer {
   private w = 0; private h = 0; private dpr = 1
   private animId = 0
   private bp: MachineBlueprint | null = null
+  private cells: TreemapCell[] = []
   private zoom = 1
   private offsetX = 0; private offsetY = 0
   private hoverId: string | null = null
@@ -349,34 +316,15 @@ export class MachineRenderer {
 
   setBlueprint(bp: MachineBlueprint) {
     this.bp = bp
+    this.cells = layoutTreemap(bp, 1400, 900)
     this.autoFit()
   }
 
   private autoFit() {
-    if (!this.bp || this.bp.stations.length === 0) return
-    const xs = this.bp.stations.map((s) => s.x)
-    const minX = Math.min(...xs) - 80
-    const maxX = Math.max(...xs) + 80
-    const rangeX = maxX - minX
-    this.zoom = Math.min(1.2, this.w / rangeX)
-    this.offsetX = -(minX + maxX) / 2
-    this.offsetY = 30 // 稍微向下偏移，给仪表留空间
-  }
-
-  private w2s(wx: number, wy: number): [number, number] {
-    return [(wx + this.offsetX) * this.zoom + this.w / 2, (wy + this.offsetY) * this.zoom + this.h / 2]
-  }
-  private s2w(sx: number, sy: number): [number, number] {
-    return [(sx - this.w / 2) / this.zoom - this.offsetX, (sy - this.h / 2) / this.zoom - this.offsetY]
-  }
-
-  private resize() {
-    const p = this.canvas.parentElement
-    if (!p) return
-    this.dpr = window.devicePixelRatio || 1
-    this.w = p.clientWidth; this.h = p.clientHeight
-    this.canvas.width = this.w * this.dpr; this.canvas.height = this.h * this.dpr
-    this.canvas.style.width = `${this.w}px`; this.canvas.style.height = `${this.h}px`
+    this.zoom = Math.min(this.w / 1400, this.h / 900)
+    this.offsetX = -700
+    this.offsetY = -450
+  }px`; this.canvas.style.height = `${this.h}px`
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
   }
 
@@ -416,7 +364,7 @@ export class MachineRenderer {
     const [wx, wy] = this.s2w(e.clientX - r.left, e.clientY - r.top)
     this.hoverId = null
     if (this.bp) {
-      for (const st of this.bp.stations) {
+      if (this.bp) for (const st of this.bp!.stations) {
         const dx = wx - st.x, dy = wy - st.y
         if (dx * dx + dy * dy < 40 * 40) { this.hoverId = st.id; break }
       }
@@ -443,104 +391,49 @@ export class MachineRenderer {
 
     if (!this.bp) return
 
-    // 工作单元卡片（长方形面板，卡片式布局）
-    const cellMap = new Map<number, { minX: number; maxX: number; minY: number; maxY: number }>()
-    for (const st of this.bp.stations) {
-      if (!cellMap.has(st.turnId)) {
-        cellMap.set(st.turnId, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity })
-      }
-      const c = cellMap.get(st.turnId)!
-      c.minX = Math.min(c.minX, st.x)
-      c.maxX = Math.max(c.maxX, st.x)
-      c.minY = Math.min(c.minY, st.y)
-      c.maxY = Math.max(c.maxY, st.y)
-    }
-    for (const [tid, c] of cellMap) {
-      // 固定尺寸卡片（不依赖内容位置，更规整）
-      const cw = 240, ch = 170 // card width/height
-      const cx = c.minX - 20, cy = c.minY - 35 // card 左上角
-      const [sx, sy] = this.w2s(cx, cy)
-      const sw = cw * this.zoom, sh = ch * this.zoom
-      if (sx + sw < 0 || sx > this.w) continue
-      
-      // 卡片阴影（物理深度感）
-      ctx.save()
-      ctx.shadowColor = 'rgba(0,0,0,0.4)'
-      ctx.shadowBlur = 8
-      ctx.shadowOffsetY = 4
-      
-      // 卡片背景（实体面板，非虚线）
-      const cardHue = (tid * 47) % 360 // 每回合不同色相
-      const cardGrad = ctx.createLinearGradient(sx, sy, sx, sy + sh)
-      cardGrad.addColorStop(0, `hsla(${cardHue}, 20%, 12%, 0.95)`)
-      cardGrad.addColorStop(1, `hsla(${cardHue}, 15%, 8%, 0.95)`)
-      ctx.fillStyle = cardGrad
-      ctx.beginPath(); ctx.roundRect(sx, sy, sw, sh, 8); ctx.fill()
-      
-      // 卡片边框（顶部亮线，底部暗线——立体感）
-      ctx.shadowColor = 'transparent'
-      ctx.strokeStyle = `hsla(${cardHue}, 40%, 45%, 0.3)`
+    // Treemap cards (area = complexity)
+    for (const cell of this.cells) {
+      const [sx, sy] = this.w2s(cell.x, cell.y)
+      const sw = cell.w * this.zoom
+      const sh = cell.h * this.zoom
+      if (sx + sw < 0 || sx > this.w || sy + sh < 0 || sy > this.h) continue
+      const cardHue = ((cell.turnId * 47) % 360 + 360) % 360
+      const grad = ctx.createLinearGradient(sx, sy, sx, sy + sh)
+      grad.addColorStop(0, `hsla(${cardHue}, 22%, 14%, 0.95)`)
+      grad.addColorStop(1, `hsla(${cardHue}, 18%, 9%, 0.95)`)
+      ctx.fillStyle = grad
+      ctx.beginPath(); ctx.roundRect(sx, sy, sw, sh, 6); ctx.fill()
+      ctx.strokeStyle = `hsla(${cardHue}, 45%, 50%, 0.25)`
       ctx.lineWidth = 1
-      ctx.beginPath(); ctx.roundRect(sx, sy, sw, sh, 8); ctx.stroke()
-      // 顶部高光线
-      ctx.strokeStyle = `hsla(${cardHue}, 50%, 60%, 0.15)`
-      ctx.beginPath(); ctx.moveTo(sx + 4, sy + 1); ctx.lineTo(sx + sw - 4, sy + 1); ctx.stroke()
-      
-      ctx.restore()
-      
-      // 卡片标题栏（回合信息）
-      if (this.zoom > 0.35) {
-        const titleH = 22 * this.zoom
-        // 标题栏背景
-        ctx.fillStyle = `hsla(${cardHue}, 35%, 18%, 0.9)`
-        ctx.beginPath(); ctx.roundRect(sx + 1, sy + 1, sw - 2, titleH, [8, 8, 0, 0]); ctx.fill()
-        // 标题文字
-        ctx.fillStyle = `hsla(${cardHue}, 60%, 75%, 0.9)`
-        ctx.font = `bold ${11 * Math.min(this.zoom, 1.2)}px -apple-system, sans-serif`
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(`回合 ${tid + 1}`, sx + 8, sy + titleH / 2 + 1)
-        // 回合内工位计数
-        const toolCount = this.bp!.stations.filter(st => st.turnId === tid && !['input-funnel','thinking-gear','output-chute'].includes(st.type)).length
-        if (toolCount > 0) {
-          ctx.fillStyle = `hsla(${cardHue}, 40%, 55%, 0.6)`
-          ctx.font = `${9 * this.zoom}px monospace`
-          ctx.textAlign = 'right'
-          ctx.fillText(`${toolCount} 工具`, sx + sw - 8, sy + titleH / 2 + 1)
-        }
+      ctx.stroke()
+      const th = Math.min(22, sh * 0.15)
+      ctx.fillStyle = `hsla(${cardHue}, 35%, 18%, 0.9)`
+      ctx.beginPath(); ctx.roundRect(sx + 1, sy + 1, sw - 2, th, [6, 6, 0, 0]); ctx.fill()
+      ctx.fillStyle = `hsla(${cardHue}, 60%, 75%, 0.9)`
+      ctx.font = `bold ${Math.min(11, th * 0.55)}px -apple-system, sans-serif`
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(cell.label, sx + 8, sy + th / 2 + 1)
+      const tc = cell!.items.filter(i => !['input-funnel','thinking-gear','output-chute','compressor'].includes(i.station.type)).length
+      if (tc > 0) {
+        ctx.fillStyle = `hsla(${cardHue}, 40%, 60%, 0.6)`
+        ctx.font = `${Math.min(9, th * 0.45)}px monospace`
+        ctx.textAlign = 'right'
+        ctx.fillText(`${tc} tools`, sx + sw - 8, sy + th / 2 + 1)
       }
     }
-
-    // 传送带
-    for (const cv of this.bp.conveyors) {
-      const from = this.bp.stations.find((s) => s.id === cv.fromStation)
-      const to = this.bp.stations.find((s) => s.id === cv.toStation)
-      if (!from || !to) continue
-      const [x1, y1] = this.w2s(from.x, from.y)
-      const [x2, y2] = this.w2s(to.x, to.y)
-      const isBranch = from.y !== 0 || to.y !== 0
-      drawConveyor(ctx, x1, y1, x2, y2, now, this.zoom, isBranch)
-    }
-
-    // 工位
-    for (const st of this.bp.stations) {
-      const [sx, sy] = this.w2s(st.x, st.y)
-      if (sx < -100 || sx > this.w + 100) continue // 视口裁剪
-      const isHovered = this.hoverId === st.id
-      drawStation(ctx, st, sx, sy, this.zoom, now, isHovered)
-
-      // 标签
-      if (this.zoom > 0.4) {
-        ctx.fillStyle = isHovered ? DOPAMINE.text : DOPAMINE.textDim
-        ctx.font = `${10 * Math.min(this.zoom, 1.2)}px -apple-system, sans-serif`
-        ctx.textAlign = 'center'
-        const label = st.label.length > 14 ? st.label.slice(0, 13) + '…' : st.label
-        ctx.fillText(label, sx, sy + 45 * this.zoom)
-        // 耗时
-        if (st.durationMs > 500 && this.zoom > 0.6) {
-          ctx.fillStyle = DOPAMINE.textDim + '80'
-          ctx.font = `${8 * this.zoom}px monospace`
-          ctx.fillText(`${(st.durationMs / 1000).toFixed(1)}s`, sx, sy - 40 * this.zoom)
+    // Stations inside cells
+    for (const cell of this.cells) {
+      for (const item of cell.items) {
+        const [isx, isy] = this.w2s(item.x, item.y)
+        if (isx < -50 || isx > this.w + 50) continue
+        const st = item.station
+        drawStation(ctx, st, isx, isy, Math.max(this.zoom, 0.5), now, this.hoverId === st.id)
+        if (this.zoom > 0.3) {
+          ctx.fillStyle = this.hoverId === st.id ? DOPAMINE.text : DOPAMINE.textDim
+          ctx.font = `${9 * Math.min(this.zoom, 1.2)}px -apple-system, sans-serif`
+          ctx.textAlign = 'center'
+          const lbl = st.label.length > 10 ? st.label.slice(0, 9) + '…' : st.label
+          ctx.fillText(lbl, isx, isy + 30 * this.zoom)
         }
       }
     }
