@@ -146,7 +146,7 @@ export function temporalAlpha(
   const ratio = maxAge === 0 ? 0 : ageFromNewest / maxAge
   // 调研主题2：非焦点 0.15-0.3，焦点 ≥ 0.85，对比度 ≥ 3:1
   // 折衷：最老 0.3（可见但不喧宾夺主），最新 1.0
-  return 1.0 - ratio * 0.7 // 1.0 → 0.3
+  return 1.0 - ratio * 0.5 // 1.0 → 0.5 (确保所有回合可见)
 }
 
 /* ═════════════════════════════════════════════════
