@@ -18,7 +18,8 @@ export interface WorkspaceSnapshot {
 const PREFIX = 'wsnap:'
 const MAX_SNAPSHOTS = 20
 
-function bytesToB64(bytes: Uint8Array): string {
+/** 分块 base64（32k 一批 spread，避免逐字节拼接的 O(n²)）；runtime 导出与快照共用 */
+export function bytesToB64(bytes: Uint8Array): string {
   let s = ''
   const chunk = 0x8000
   for (let i = 0; i < bytes.length; i += chunk) {

@@ -1185,4 +1185,103 @@ const FINAL = () => [
   assert(rt18.getSnapshot().balance !== null && rt18.getSnapshot().balance!.total === '42.50', '余额修复：芯片数据持久')
 }
 
+/* ---------------- 19. ask_user 回答落档顺序（协议合法性） ---------------- */
+
+{
+  async function waitCond19(fn: () => boolean, ms = 4_000): Promise<void> {
+    const t0 = Date.now()
+    while (!fn()) {
+      if (Date.now() - t0 > ms) throw new Error('waitCond 超时')
+      await new Promise((r) => setTimeout(r, 20))
+    }
+  }
+  const t19 = new ScriptedTransport([
+    [
+      toolCallChunk('call_q', 'ask_user', '{"question":"用哪种配色？"}', true),
+      sse({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] }),
+    ],
+    [sse({ choices: [{ index: 0, delta: { content: '好，就用这个配色。' }, finish_reason: 'stop' }] })],
+  ])
+  const rt19 = new HarnessRuntime({
+    kv: new MapKV(), fs: new TestFS(), transport: t19,
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt19.boot()
+  await rt19.saveSettings({
+    providers: [{ id: 'mock', name: 'Mock', baseURL: 'http://localhost:9/v1', apiKey: '', model: 'mock-1' }],
+    activeProviderId: 'mock', proxyTemplate: '', webSearch: null,
+  })
+  const turn19 = rt19.send('问我配色')
+  await waitCond19(() => rt19.getSnapshot().ask !== null)
+  rt19.answerAsk(rt19.getSnapshot().ask!.id, '深蓝')
+  await turn19
+  const msgs19 = rt19.getSnapshot().session!.messages
+  const askIdx = msgs19.findIndex((m) => m.role === 'assistant' && m.tool_calls?.length)
+  assert(
+    msgs19[askIdx + 1]?.role === 'tool' && msgs19[askIdx + 1]?.tool_call_id === 'call_q',
+    `ask_user：tool 结果紧跟 assistant.tool_calls（协议合法，实际 ${msgs19[askIdx + 1]?.role}）`,
+  )
+  const toolMsg19 = msgs19.find((m) => m.role === 'tool')
+  assert(!!toolMsg19 && toolMsg19.content!.includes('[用户回答] 深蓝'), 'ask_user：回答进入工具结果（模型当轮可见）')
+  const noteIdx = msgs19.findIndex((m) => m.role === 'user' && (m.content ?? '').includes('[回答 ask_user'))
+  assert(noteIdx > askIdx + 1, 'ask_user：回答留档于 tool 批次之后（不被视图折叠吞噬）')
+  // 发往 API 的请求体同样满足配平
+  for (const body of t19.requests) {
+    const reqMsgs = JSON.parse(body).messages
+    reqMsgs.forEach((m: any, i: number) => {
+      if (m.role === 'assistant' && m.tool_calls?.length) {
+        if (!m.tool_calls.every((tc: any) => reqMsgs[i + 1]?.role === 'tool' || reqMsgs.slice(0, i).some((x: any) => x.role === 'tool' && x.tool_call_id === tc.id))) {
+          assert(reqMsgs[i + 1]?.role === 'tool', 'ask_user：请求体中 tool 结果紧跟 tool_calls')
+        }
+      }
+    })
+  }
+  assert(true, 'ask_user：全部请求体满足 API 配平约束')
+}
+
+/* ---------------- 20. 导入会话配平（悬空 tool_calls 修复） ---------------- */
+
+{
+  const rt20 = new HarnessRuntime({
+    kv: new MapKV(), fs: new TestFS(), transport: new ScriptedTransport([]),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  await rt20.boot()
+  const danglingImport = {
+    id: 's_import_x',
+    title: '外部导入',
+    createdAt: 0,
+    updatedAt: 0,
+    todos: [],
+    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    messages: [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'z1', name: 'read_file', arguments: '{"path":"/a"}' }] },
+      // z1 缺结果 —— 导出方中断产生
+    ],
+  }
+  const okImp = await rt20.importSession(JSON.stringify({ kind: 'tim-harness-session', version: 1, session: danglingImport }))
+  assert(okImp, '导入：会话接受')
+  const imp = rt20.getSnapshot().session!
+  const answered20 = new Set(imp.messages.filter((m: any) => m.role === 'tool').map((m: any) => m.tool_call_id))
+  assert(
+    imp.messages
+      .filter((m: any) => m.role === 'assistant' && m.tool_calls?.length)
+      .every((m: any) => m.tool_calls.every((tc: any) => answered20.has(tc.id))),
+    '导入：悬空 tool_calls 已自动配平（可直接继续对话）',
+  )
+  assert(imp.ops?.some((o: any) => o.op === 'repair'), '导入：修复写入操作审计')
+
+  // 导出格式锁定（重构 exportWorkspace 编码实现时的行为基线）
+  const rt20fs = (rt20 as any).deps.fs as TestFS
+  await rt20fs.writeFile('/export/a.txt', 'hello 导出')
+  const bundle = JSON.parse(await rt20.exportWorkspace())
+  assert(bundle.kind === 'tim-harness-workspace' && bundle.version === 1, '导出：bundle 头部字段')
+  const expectedB64 = btoa(Array.from(new TextEncoder().encode('hello 导出'), (b) => String.fromCharCode(b)).join(''))
+  assert(
+    bundle.files['/export/a.txt'] === expectedB64,
+    '导出：文本内容 base64 编码正确（UTF-8 字节）',
+  )
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)

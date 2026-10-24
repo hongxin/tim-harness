@@ -30,6 +30,7 @@ import { scanSkills, type SkillMeta } from './tools/skills'
 import { buildContextView, estimateChars } from './agent/context'
 import { tierPolicy } from './token-economy'
 import {
+  bytesToB64,
   deleteSnapshot,
   listSnapshots,
   restoreSnapshot,
@@ -164,6 +165,8 @@ export class HarnessRuntime {
   private fsRev = 0
   private writtenBySession = new Map<string, Set<string>>()
   private skills: SkillMeta[] = []
+  /** ask_user 回答留档队列：等本轮工具批次落账后再入日志（见 answerAsk） */
+  private pendingUserNotes: string[] = []
   private compactingFlag = false
   private composerPrefill: string | null = null
   private snapRevCounter = 0
@@ -464,6 +467,9 @@ export class HarnessRuntime {
     this.status = 'idle'
     this.abortController = null
     this.draft = null
+    // 冲洗残留的 ask_user 回答留档（正常路径已在 llm_start 冲洗；中止路径在此兜底，
+    // 此时悬空调用已由日志配平补齐合成结果，插入点依然合法）
+    this.flushUserNotes()
     // 中止时若仍有挂起的 ask_user / 审批，释放并清理（其工具结果已由日志配平补齐）
     if (!result.ok) {
       if (this.ask) {
@@ -1025,16 +1031,31 @@ export class HarnessRuntime {
     this.ask = null
     const resolve = this.askResolve
     this.askResolve = null
-    // 把用户的回答也留档到会话（对模型可见）
-    this.session?.messages.push({
-      role: 'user',
-      content: `[回答 ask_user「${question}」] ${answer || '(跳过)'}`,
-    })
+    // 用户回答留档：先入队而非直接写日志 —— 此刻工具结果尚未落账，直接 push 会插在
+    // assistant.tool_calls 与其 tool 结果之间，违反 OpenAI 协议配平（严格 provider 会 400）。
+    // 队列在下一次 llm_start（工具批次已完整落账）或 turn 收尾时冲洗。
+    this.pendingUserNotes.push(`[回答 ask_user「${question}」] ${answer || '(跳过)'}`)
     this.notify()
     resolve?.(answer)
   }
 
+  /** 冲洗回答留档：插入点必然在完整 tool 批次之后（协议合法），user 消息不会被视图折叠 */
+  private flushUserNotes(): void {
+    if (this.pendingUserNotes.length === 0 || !this.session) return
+    for (const note of this.pendingUserNotes) {
+      this.session.messages.push({ role: 'user', content: note })
+    }
+    this.pendingUserNotes = []
+    void this.persistSession()
+    this.scheduleNotify()
+  }
+
   private onAgentEvent(e: AgentEvent): void {
+    if (e.type === 'llm_start') {
+      // 新迭代开始 = 上一轮工具批次已完整落账 → 安全冲洗 ask_user 回答留档
+      this.flushUserNotes()
+      return
+    }
     if (e.type === 'tool_end') {
       // 文件写入类工具 → 递增 fsRev（驱动文件面板精准刷新）并记录"新写文件"
       if ((e.call.name === 'write_file' || e.call.name === 'edit_file') && e.result.ok) {
@@ -1147,6 +1168,12 @@ export class HarnessRuntime {
       if (!s?.id || !Array.isArray(s.messages)) return false
       s.usage = s.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
       s.todos = Array.isArray(s.todos) ? s.todos : []
+      // 与启动加载同规格：导入源可能带悬空 tool_calls（导出方中断产生），先配平再入账
+      const fixed = repairSessionIntegrity(s)
+      if (fixed > 0) {
+        if (!s.ops) s.ops = []
+        s.ops.push({ op: 'repair', ts: Date.now(), note: `${fixed} dangling tool calls (import)` })
+      }
       await this.deps.kv.set(K_SESSION(s.id), s)
       this.sessions.unshift({ id: s.id, title: s.title || '导入会话', updatedAt: s.updatedAt || Date.now() })
       this.session = s
@@ -1163,10 +1190,7 @@ export class HarnessRuntime {
     const files: Record<string, string> = {}
     for (const e of entries) {
       if (e.kind !== 'file') continue
-      const bytes = await this.deps.fs.readBytes(e.path)
-      let binary = ''
-      for (const b of bytes) binary += String.fromCharCode(b)
-      files[e.path] = btoa(binary)
+      files[e.path] = bytesToB64(await this.deps.fs.readBytes(e.path))
     }
     return JSON.stringify({ kind: 'tim-harness-workspace', version: 1, files }, null, 2)
   }
