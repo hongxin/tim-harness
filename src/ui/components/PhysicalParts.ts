@@ -149,6 +149,8 @@ export function drawPipe(
 ): void {
   const width = opts?.width ?? 4
   const flowing = opts?.flowing ?? true
+  const dx = x2 - x1, dy = y2 - y1
+  const len = Math.sqrt(dx * dx + dy * dy) || 1
   ctx.save()
 
   // 管道阴影
