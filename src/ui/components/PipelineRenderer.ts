@@ -378,29 +378,7 @@ export class PipelineRenderer {
       ctx.globalAlpha = 1
     }
 
-    // 回合间连接（考虑换行：同行水平连，跨行跳过）
-    for (let ti = 0; ti < turns.length - 1; ti++) {
-      const row1 = Math.floor(ti / maxPerRow)
-      const col1 = ti % maxPerRow
-      const row2 = Math.floor((ti + 1) / maxPerRow)
-      const col2 = (ti + 1) % maxPerRow
-      
-      if (row1 !== row2) continue // 跨行不画连接线
-      
-      const x1 = col1 * (this.pipeW + GAP_H) + 20 + this.pipeW
-      const x2 = col2 * (this.pipeW + GAP_H) + 20
-      const y = USER_H / 2 + row1 * (this.rowHeight * this.zoom + 20)
-      const [sx1, sy1] = this.w2s(x1, y)
-      const [sx2, sy2] = this.w2s(x2, y)
-      ctx.strokeStyle = C.flow + '50'; ctx.lineWidth = 3
-      ctx.beginPath(); ctx.moveTo(sx1 + 4, sy1); ctx.lineTo(sx2 - 4, sy2); ctx.stroke()
-      ctx.strokeStyle = C.flow + '80'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.moveTo(sx1 + 4, sy1); ctx.lineTo(sx2 - 4, sy2); ctx.stroke()
-      const pt = (now / 800 + ti * 0.33) % 1
-      const px = sx1 + 4 + (sx2 - 8 - sx1) * pt
-      ctx.fillStyle = C.flow
-      ctx.beginPath(); ctx.arc(px, sy1, 3, 0, Math.PI * 2); ctx.fill()
-    }
+    // （旧连接线代码已删除——由下方的正交布线连接线替代）
 
     // ═══ 统一绘制锚点（与连接线同一坐标源）═══
     for (let ti = 0; ti < turns.length; ti++) {
