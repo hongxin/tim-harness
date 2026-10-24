@@ -77,7 +77,7 @@ function parseTurns(
     if (msg.role === 'user') {
       current = {
         turnId: turns.length + 1,
-        userText: (msg.content ?? '').slice(0, 40),
+        userText: (msg.content || 'Untitled').slice(0, 40),
         thinkSteps: [], tools: [], finalText: '',
         isPreCompact: mi < folded,
       }
@@ -86,13 +86,13 @@ function parseTurns(
       if (msg.tool_calls) {
         current.thinkSteps.push(`${msg.tool_calls.length} tools`)
         for (const tc of msg.tool_calls) {
-          current.tools.push({ name: tc.name, ok: true, dur: 0, desc: TOOL_DESC[tc.name] ?? '' })
+          current.tools.push({ name: tc.name || 'unknown', ok: true, dur: 0, desc: TOOL_DESC[tc.name] ?? '' })
         }
       } else if (msg.content) {
-        current.finalText = msg.content.slice(0, 30)
+        current.finalText = (msg.content || '').slice(0, 30)
       }
     } else if (msg.role === 'tool' && current) {
-      const t = current.tools.find((tt) => tt.name === msg.name && !tt.dur)
+      const t = current.tools.find((tt) => tt.name === (msg.name || 'unknown') && !tt.dur)
       if (t) { t.ok = msg.toolOk !== false; t.dur = msg.durationMs ?? 0 }
     }
   }
@@ -308,6 +308,12 @@ export class PipelineRenderer {
 
     this.hitItems = []
     const { turns } = this.data
+
+    // ═══ 自适应模式：>6 回合用热力图，≤6 用管道 ═══
+    if (turns.length > 6) {
+      this.drawHeatmapMode(ctx, turns, now)
+      return
+    }
 
     // 蛇形布局 + 物理节点初始化
     const maxPerRow = Math.max(2, Math.floor((this.w - 40) / (this.pipeW + GAP_H)))
@@ -610,6 +616,127 @@ export class PipelineRenderer {
       ctx.font = `${15 * this.zoom}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       drawTextSafe(ctx, `✅ ${turn.finalText}`, px + pw / 2, py + dh / 2, pw - 20, 'center')
     }
+  }
+
+  
+  /* ═══ 热力图模式（>6 回合的自适应布局）═══
+   * 水平时间线 + 类别热力图
+   * 比 14 个垂直管道更紧凑、更有信息量
+   */
+  private drawHeatmapMode(ctx: CanvasRenderingContext2D, turns: PipeTurn[], now: number) {
+    const margin = 30
+    const labelW = 140
+    const heatmapW = this.w - margin * 2 - labelW
+    const rowH = Math.min(32, (this.h - 160) / turns.length)
+    const startY = 70
+
+    // 收集所有类别
+    const allCats = new Set<string>()
+    for (const t of turns) {
+      for (const tool of t.tools) {
+        const cat = TOOL_CATEGORY[tool.name]?.cat ?? tool.name
+        allCats.add(cat)
+      }
+    }
+    const catList = Array.from(allCats).sort()
+    const catCount = catList.length
+    const colW = heatmapW / Math.max(catCount, 1)
+
+    // 标题
+    ctx.fillStyle = C.text
+    ctx.font = 'bold 16px -apple-system, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.fillText(`Heatmap — ${turns.length} turns · ${catCount} categories`, margin, 36)
+    ctx.fillStyle = C.textDim
+    ctx.font = '11px monospace'
+    ctx.fillText(`${turns.reduce((s, t) => s + t.tools.reduce((a, b) => a + (b.count ?? 1), 0), 0)} total ops`, margin, 52)
+
+    // 列头（类别名）
+    ctx.font = '9px monospace'
+    ctx.textAlign = 'center'
+    for (let ci = 0; ci < catCount; ci++) {
+      const cat = catList[ci]
+      const icon = TOOL_CATEGORY[`_${cat}`]?.icon ?? '·'
+      const cx = margin + labelW + ci * colW + colW / 2
+      ctx.fillStyle = C.textDim
+      ctx.fillText(cat, cx, startY - 10)
+    }
+
+    // 行（每个回合）
+    const maxVal = Math.max(...turns.flatMap(t => 
+      Array.from(this.categorizeTools(t.tools).values()).map(v => v)
+    ), 1)
+
+    for (let ti = 0; ti < turns.length; ti++) {
+      const turn = turns[ti]
+      const y = startY + ti * rowH
+      
+      // 行标签（ST N + 简短用户文本）
+      ctx.fillStyle = C.textDim
+      ctx.font = `${Math.min(10, rowH * 0.3)}px monospace`
+      ctx.textAlign = 'left'
+      ctx.fillText(`ST${turn.turnId}`, margin, y + rowH * 0.5)
+      ctx.fillStyle = C.text
+      ctx.font = `${Math.min(9, rowH * 0.25)}px sans-serif`
+      const shortUser = turn.userText.slice(0, 12)
+      ctx.fillText(shortUser, margin + 30, y + rowH * 0.5)
+      // 总操作数
+      const ops = turn.tools.reduce((a, b) => a + (b.count ?? 1), 0)
+      ctx.fillStyle = C.tool
+      ctx.font = `${Math.min(9, rowH * 0.25)}px monospace`
+      ctx.textAlign = 'right'
+      ctx.fillText(`${ops}`, margin + labelW - 10, y + rowH * 0.5)
+
+      // 热力图格子
+      const catMap = this.categorizeTools(turn.tools)
+      for (let ci = 0; ci < catCount; ci++) {
+        const cat = catList[ci]
+        const val = catMap.get(cat) ?? 0
+        const intensity = val / maxVal
+        const cx = margin + labelW + ci * colW
+
+        if (val > 0) {
+          // 热力格（颜色强度 = 数量）
+          const alpha = 0.1 + intensity * 0.6
+          ctx.fillStyle = `rgba(0, 229, 255, ${alpha})`
+          ctx.beginPath()
+          ctx.roundRect(cx + 2, y + 2, colW - 4, rowH - 4, 3)
+          ctx.fill()
+          // 数量文字（如果格子够大）
+          if (colW > 30 && rowH > 18) {
+            ctx.fillStyle = intensity > 0.5 ? '#0A0E14' : C.text
+            ctx.font = `${Math.min(10, rowH * 0.3)}px monospace`
+            ctx.textAlign = 'center'
+            ctx.fillText(String(val), cx + colW / 2, y + rowH * 0.55)
+          }
+        } else {
+          // 空格子（极淡的网格）
+          ctx.fillStyle = 'rgba(30, 35, 45, 0.3)'
+          ctx.beginPath()
+          ctx.roundRect(cx + 2, y + 2, colW - 4, rowH - 4, 3)
+          ctx.fill()
+        }
+      }
+    }
+
+    // 底部说明
+    ctx.fillStyle = C.textDim + '60'
+    ctx.font = '9px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.fillText('■ intensity = tool count · click a row for detail', margin, startY + turns.length * rowH + 20)
+
+    // 仍然绘制底部仪表
+    this.drawFooter(ctx, now)
+  }
+
+  /** 将工具列表按类别汇总 */
+  private categorizeTools(tools: ToolItem[]): Map<string, number> {
+    const map = new Map<string, number>()
+    for (const t of tools) {
+      const cat = TOOL_CATEGORY[t.name]?.cat ?? t.name
+      map.set(cat, (map.get(cat) ?? 0) + (t.count ?? 1))
+    }
+    return map
   }
 
   private drawFooter(ctx: CanvasRenderingContext2D, now: number) {
