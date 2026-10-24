@@ -1,3 +1,4 @@
+import { drawContextGauge } from './MachineParts'
 /** Cosmos 2D 视图：结构化星座布局（v3） */
 import { useEffect, useRef, useState } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
@@ -8,6 +9,7 @@ export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; r
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const engineRef = useRef<CosmosCanvas2D | null>(null)
   const [selected, setSelected] = useState<CosmosNode2D | null>(null)
+  const gaugeRef = useRef<HTMLCanvasElement>(null)
   const [caption, setCaption] = useState<string | null>(null)
   const [tourIndex, setTourIndex] = useState(-1)
   const [tourSteps, setTourSteps] = useState<TurnCluster[]>([])
@@ -41,6 +43,17 @@ export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; r
     setTourSteps(engineRef.current?.getTourSteps() ?? [])
   }, [snapshot.rev, snapshot.session]) // eslint-disable-line react-hooks/exhaustive-deps
 
+    // 上下文液位计
+  useEffect(() => {
+    if (!gaugeRef.current || !snapshot.contextInfo) return
+    const ctx = gaugeRef.current.getContext('2d')
+    if (!ctx) return
+    drawContextGauge(ctx, 0, 0, 120, 16,
+      snapshot.contextInfo.sentChars / snapshot.contextInfo.budgetChars,
+      snapshot.contextInfo.masked,
+      (document.documentElement.dataset.theme ?? 'dark') !== 'light')
+  }, [snapshot.contextInfo])
+
   const inTour = tourIndex >= 0 && tourIndex < tourSteps.length
   const handlePrev = () => { if (tourIndex > 0) { setTourIndex(tourIndex - 1); engineRef.current?.flyToTurn(tourSteps[tourIndex - 1].turnId) } }
   const handleNext = () => { if (tourIndex < tourSteps.length - 1) { setTourIndex(tourIndex + 1); engineRef.current?.flyToTurn(tourSteps[tourIndex + 1].turnId) } }
@@ -59,6 +72,7 @@ export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; r
         </span>
         <span className="cosmos-stat">上下文 {ctxPct}%</span>
         <span className="cosmos-stat">{(snapshot.session?.usage.total_tokens ?? 0).toLocaleString()} tokens</span>
+        <canvas ref={gaugeRef} width={120} height={16} style={{ borderRadius: 4, marginLeft: 4 }} />
       </div>
       {/* bbycroft 步进叙事 */}
       {caption && (
