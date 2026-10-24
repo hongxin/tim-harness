@@ -103,6 +103,17 @@ function parseTurns(
   let current: PipeTurn | null = null
   const toolResults = new Map<string, { ok: boolean; dur: number }>()
 
+  // compacted 历史不丢弃——显示为压缩核心段（修复2）
+  if (folded > 0) {
+    turns.push({
+      turnId: 0,
+      userText: `⚡ Compact (${folded} msgs)`,
+      thinkSteps: [],
+      tools: [],
+      finalText: '已压缩',
+    })
+  }
+
   for (const msg of msgs.slice(folded)) {
     if (msg.role === 'user') {
       current = { turnId: turns.length + 1, userText: (msg.content ?? '').slice(0, 30), thinkSteps: [], tools: [], finalText: '' }
@@ -294,7 +305,6 @@ export class PipelineRenderer {
 
     // ═══ 底部约束条 ═══
     this.drawConstraintBar(ctx)
-    this.drawTimeline(ctx)
   }
 
   /* ════════════════════════════════════════════════
@@ -429,18 +439,32 @@ export class PipelineRenderer {
       ctx.textAlign = 'left'
       ctx.fillText(toolIcon(tool.name), px + 24 * this.zoom, py + toolH / 2)
       // 工具名
-      // 名称（第一行，稍大）
-      ctx.fillStyle = tool.ok ? C.text : '#FF6666'
+      // 名称（第一行，稍大）— 折叠时显示 ×N 计数（修复1）
+      const isFolded = (tool as any).folded === true
+      const foldCount = (tool as any).count ?? 1
+      const displayName = isFolded
+        ? `${tool.name} ×${foldCount}`
+        : tool.ok ? tool.name : `⚠ ${tool.name}`
+      ctx.fillStyle = isFolded ? C.tool : tool.ok ? C.text : '#FF6666'
       ctx.font = `${13 * this.zoom}px ui-monospace, monospace`
       ctx.textAlign = 'left'
       ctx.textBaseline = 'alphabetic'
-      // 失败工具加警告前缀
-      drawTextSafe(ctx, tool.ok ? tool.name : `⚠ ${tool.name}`, px + 50 * this.zoom, py + toolH * 0.38, pw - 120 * this.zoom, 'left')
+      drawTextSafe(ctx, displayName, px + 50 * this.zoom, py + toolH * 0.38, pw - 120 * this.zoom, 'left')
       // 描述（第二行，更小更淡）
-      if (tool.desc) {
-        ctx.fillStyle = tool.ok ? C.textDim + '90' : '#FF8888'
+      const displayDesc = isFolded
+        ? `${foldCount} 次连续调用（已折叠）`
+        : tool.ok ? (tool.desc || '') : '执行失败'
+      if (displayDesc) {
+        ctx.fillStyle = isFolded ? C.tool + '80' : tool.ok ? C.textDim + '90' : '#FF8888'
         ctx.font = `${10 * this.zoom}px -apple-system, sans-serif`
-        drawTextSafe(ctx, tool.ok ? (tool.desc || '') : '执行失败', px + 50 * this.zoom, py + toolH * 0.72, pw - 120 * this.zoom, 'left')
+        drawTextSafe(ctx, displayDesc, px + 50 * this.zoom, py + toolH * 0.72, pw - 120 * this.zoom, 'left')
+      }
+      // 折叠指示（右侧小箭头）
+      if (isFolded) {
+        ctx.fillStyle = C.tool + '60'
+        ctx.font = `${9 * this.zoom}px sans-serif`
+        ctx.textAlign = 'right'
+        ctx.fillText('▸', px + pw - 50 * this.zoom, py + toolH * 0.5)
       }
       // 状态指示灯（圆形，非文字符号）
       const statusColor = tool.ok ? C.done : C.error
@@ -499,91 +523,68 @@ export class PipelineRenderer {
   private drawConstraintBar(ctx: CanvasRenderingContext2D) {
     if (!this.data) return
     const barY = this.h - FOOTER_H
-    const barH = FOOTER_H - 20
     const barW = Math.min(this.w - 40, 500)
     const barX = (this.w - barW) / 2
 
-    // 背景面板
-    ctx.fillStyle = C.pipe + '90'
-    ctx.strokeStyle = C.pipeEdge
-    ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 6); ctx.fill(); ctx.stroke()
+    // 底部面板（物理感）
+    drawPanel(ctx, barX - 5, barY, barW + 10, FOOTER_H - 10, {
+      hue: 220, sat: 12, light: 10, depth: 3
+    }, performance.now(), { screws: false })
 
-    // 上下文仪表（物理仪表盘）
+    // 左侧：上下文仪表
     const ctxRatio = Math.min(this.data.contextUsed / this.data.contextMax, 1)
-    drawGauge(ctx, barX + 40, barY + 35, 24, Math.round(ctxRatio * 100), 100, 'Context', 140, performance.now())
+    drawGauge(ctx, barX + 40, barY + 25, 18, Math.round(ctxRatio * 100), 100, 'Ctx', 140, performance.now())
 
-    // Token 燃料
-    const tokenY = barY + 12 + barH - 20 + 10
-    // 成本估算（token ≈ 人民币）
-    if (this.data.totalTokens > 0) {
-      const costCNY = this.data.totalTokens * 0.0000014 // 假设 1.4 CNY/M tokens
-      ctx.fillStyle = C.textDim + '90'
-      ctx.font = '9px monospace'
-      ctx.textAlign = 'right'
-      ctx.fillText(`≈ ¥${costCNY.toFixed(4)}`, barX + barW - 8, tokenY + barH - 20 + 14)
-    }
+    // 中间：Token 数字（KPI 级大字）
+    ctx.fillStyle = C.text
+    ctx.font = 'bold 16px ui-monospace, monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText(this.data.totalTokens.toLocaleString(), barX + barW * 0.5, barY + 22)
     ctx.fillStyle = C.textDim
-    ctx.fillText('Token', barX + 10, tokenY - 2)
-    ctx.fillStyle = C.flow + '60'
-    const tokenRatio = Math.min(this.data.totalTokens / 100000, 1)
-    ctx.beginPath(); ctx.roundRect(barX + 70, tokenY, (barW - 180) * tokenRatio, barH - 20, 2); ctx.fill()
-    ctx.fillStyle = C.flow
-    ctx.fillText(`${this.data.totalTokens.toLocaleString()}`, barX + barW - 100, tokenY + barH - 20 - 1)
-  }
-
-
-  /* ════════════════════════════════════════════════
-     执行时间线（各阶段耗时比例）
-     ════════════════════════════════════════════════ */
-
-  private drawTimeline(ctx: CanvasRenderingContext2D) {
-    if (!this.data || this.data.turns.length === 0) return
-    const barY = this.h - 18
-    const barW = Math.min(this.w - 40, 600)
-    const barX = (this.w - barW) / 2
-
-    // 标签
-    ctx.fillStyle = C.textDim + '80'
     ctx.font = '9px monospace'
-    ctx.textAlign = 'left'
-    ctx.fillText('⏱', barX - 15, barY + 4)
-
-    // 计算各阶段总耗时
-    let inputTime = 0, thinkTime = 0, toolTime = 0
-    for (const turn of this.data.turns) {
-      inputTime += 50 // 用户输入假设 50ms
-      thinkTime += 200 // 推理假设 200ms
-      for (const t of turn.tools) toolTime += t.dur
+    ctx.fillText('tokens', barX + barW * 0.5, barY + 34)
+    // 成本
+    if (this.data.totalTokens > 0) {
+      const cost = this.data.totalTokens * 0.0000014
+      ctx.fillStyle = C.textDim + '80'
+      ctx.fillText(`≈ ¥${cost.toFixed(4)}`, barX + barW * 0.5, barY + 46)
     }
-    const totalTime = Math.max(inputTime + thinkTime + toolTime, 1)
 
-    // 分段条
-    let x = barX
-    const segments: Array<[string, number, string]> = [
-      ['输入', inputTime, C.user],
-      ['推理', thinkTime, C.think],
-      ['工具', toolTime, C.tool],
-    ]
-    for (const [label, time, color] of segments) {
-      const w = (time / totalTime) * barW
-      if (w > 2) {
+    // 右侧：时间线（紧凑横条）
+    const tlX = barX + barW - 120
+    const tlW = 100
+    const tlY = barY + 18
+    let inputT = 0, thinkT = 0, toolT = 0
+    for (const turn of this.data.turns) {
+      inputT += 50; thinkT += 200
+      for (const t of turn.tools) toolT += t.dur
+    }
+    const total = Math.max(inputT + thinkT + toolT, 1)
+    let segX = tlX
+    for (const [label, time, color] of [
+      ['I', inputT, C.user] as const,
+      ['T', thinkT, C.think] as const,
+      ['W', toolT, C.tool] as const,
+    ]) {
+      const segW = (time / total) * tlW
+      if (segW > 3) {
         ctx.fillStyle = color + '50'
-        ctx.beginPath(); ctx.roundRect(x, barY, w - 1, 8, 2); ctx.fill()
-        if (w > 30) {
-          ctx.fillStyle = color
+        ctx.beginPath(); ctx.roundRect(segX, tlY, segW - 1, 6, 2); ctx.fill()
+        if (segW > 15) {
+          ctx.fillStyle = color + '80'
           ctx.font = '7px monospace'
           ctx.textAlign = 'center'
-          ctx.fillText(label, x + w / 2, barY + 13)
+          ctx.fillText(label, segX + segW / 2, tlY + 14)
         }
       }
-      x += w
+      segX += segW
     }
-    // 总时长
-    ctx.fillStyle = C.textDim
-    ctx.font = '9px monospace'
+    ctx.fillStyle = C.textDim + '60'
+    ctx.font = '8px monospace'
+    ctx.textAlign = 'left'
+    ctx.fillText('⏱', tlX - 12, tlY + 6)
     ctx.textAlign = 'right'
-    ctx.fillText(`总 ${totalTime}ms`, barX + barW + 5, barY + 6)
+    ctx.fillText(`${total}ms`, tlX + tlW + 5, tlY + 6)
   }
 }
 
