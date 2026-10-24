@@ -1,4 +1,5 @@
-import { drawMachinePart, drawStatusLight, drawConveyorBelt, getToolIcon } from './MachineParts'
+import { drawMachinePartV2 as drawMachinePart, drawExternalLabel } from './MachinePartsV2'
+import { drawStatusLight, drawConveyorBelt, getToolIcon } from './MachineParts'
 /**
  * Cosmos 2D v4 —— 约束力导向布局（Constrained Force-Directed）
  * 力场 + 语义约束 = 有机 + 有结构（参考中医药知识图谱可视化方法论）
@@ -332,8 +333,10 @@ const gr=er*(isH?2.0:1.2);const g=ctx.createRadialGradient(sx,sy,er*.3,sx,sy,gr)
 if(bi<1&&isF){const ab=bi;for(let ap=0;ap<4;ap++){const aA=ap/4*Math.PI*2+bi*2;const aD=er*(1-ab)*2.5;const aX=sx+Math.cos(aA)*aD,aY=sy+Math.sin(aA)*aD;const aR=Math.max(2,er*.15);ctx.beginPath();ctx.arc(aX,aY,aR,0,Math.PI*2);ctx.fillStyle=this.theme.glow(hue,70,.6*(1-ab)*al);ctx.fill()}if(ab>.85){ctx.beginPath();ctx.arc(sx,sy,er*1.2,0,Math.PI*2);ctx.strokeStyle=this.theme.glow(hue,90,(ab-.85)/.15*.5*al);ctx.lineWidth=2;ctx.stroke()}}
 // Anatomy: 工具节点 = 机械零件（非纯色方块）
 if(n.kind==='tool'){
-  const { icon } = getToolIcon(n.toolName ?? n.content)
-  drawMachinePart(ctx, icon, sx, sy, er * 0.65, hue, al, now)
+  const { icon, verb } = getToolIcon(n.toolName ?? n.content)
+  drawMachinePart(ctx, icon, sx, sy, er * 0.75, hue, al, now, this.theme.dark)
+  if (this.z > 0.4) drawExternalLabel(ctx, n.toolName ?? '', sx, sy, er, 'below', this.theme.dark, Math.max(8, 10 * this.z))
+  
   // 状态指示灯
   const lightStatus = n.isRunning ? 'running' : n.isError ? 'error' : n.durationMs != null ? 'done' : 'idle'
   drawStatusLight(ctx, sx + er * 0.6, sy - er * 0.6, lightStatus, now)
@@ -343,6 +346,6 @@ if(n.isRunning&&isF){const gr2=er*1.7;const teeth=8;const rot=now/250;ctx.save()
 // 用户拖拽过的节点：虚线圆环标记（地图上的"用户标记"）
 if(n.dragged){ctx.beginPath();ctx.arc(sx,sy,er+5,0,Math.PI*2);ctx.strokeStyle=this.theme.dark?'hsla(45,60%,60%,.3)':'hsla(45,60%,40%,.4)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([])}
 if(n.isError){ctx.fillStyle=`hsla(0,90%,60%,${.9*al})`;ctx.font=`bold ${Math.max(9,er*.5)}px sans-serif`;ctx.fillText('✗',sx+er*.5,sy-er*.5)}
-if(this.z>.35&&isF){if(n.kind==='tool'){ctx.font=`bold ${Math.max(7,fs*.7)}px monospace`;ctx.fillStyle=this.theme.dark?`hsla(${hue},40%,92%,.95)`:`hsla(${hue},50%,15%,.95)`;const tn=n.toolName??n.content;ctx.fillText(tn.length>12?tn.slice(0,11)+'…':tn,sx,sy)}else{const mc=Math.floor(er*2/(fs*.55));let t=n.content;if(t.length>mc)t=t.slice(0,mc)+'…';if(t){ctx.font=`${fs}px -apple-system,sans-serif`;ctx.fillStyle=this.theme.dark?`hsla(${hue},10%,95%,.95)`:`hsla(${hue},30%,10%,.95)`;ctx.fillText(t,sx,sy+er*.4)}}}
+if(this.z>.35&&isF){if(n.kind==='tool'){ctx.font=`bold ${Math.max(7,fs*.7)}px monospace`;ctx.fillStyle=this.theme.dark?`hsla(${hue},40%,92%,.95)`:`hsla(${hue},50%,15%,.95)`;const tn=n.toolName??n.content;ctx.fillText(tn.length>12?tn.slice(0,11)+'…':tn,sx,sy)}else{const mc=Math.floor(er*2/(fs*.55));let t=n.content;if(t.length>mc)t=t.slice(0,mc)+'…';if(t){drawExternalLabel(ctx,t,sx,sy,er,'below',this.theme.dark,fs)}}}
 if(n.durationMs!=null&&n.durationMs>500&&this.z>.5&&isF){ctx.font=`${Math.max(7,fs*.7)}px monospace`;ctx.fillStyle=this.theme.dark?'rgba(200,200,200,.3)':'rgba(80,80,80,.4)';ctx.fillText(n.durationMs<1000?`${n.durationMs}ms`:`${(n.durationMs/1000).toFixed(1)}s`,sx,sy-er-8)}
 ctx.globalAlpha=1}}}
