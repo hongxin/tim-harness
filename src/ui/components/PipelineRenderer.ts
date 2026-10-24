@@ -152,7 +152,7 @@ export class PipelineRenderer {
     if (!this.data || this.data.turns.length === 0) return
     const nTurns = this.data.turns.length
     const availW = this.w - 40
-    const maxPerRow = Math.max(2, Math.floor(availW / (PIPE_W_MIN + GAP_H)))
+    const maxPerRow = Math.min(8, Math.max(3, Math.floor(availW / (PIPE_W_MIN + GAP_H))))
     const perRow = Math.min(nTurns, maxPerRow)
     const nRows = Math.ceil(nTurns / perRow)
     this.pipeW = Math.min(PIPE_W_MAX, Math.max(PIPE_W_MIN, (availW - (perRow - 1) * GAP_H) / perRow))
@@ -316,7 +316,7 @@ export class PipelineRenderer {
     }
 
     // 蛇形布局 + 物理节点初始化
-    const maxPerRow = Math.max(2, Math.floor((this.w - 40) / (this.pipeW + GAP_H)))
+    const maxPerRow = Math.min(8, Math.max(3, Math.floor((this.w - 40) / (this.pipeW + GAP_H))))
     for (let ti = 0; ti < turns.length; ti++) {
       const turn = turns[ti]
       const nodeId = String(turn.turnId)
@@ -521,11 +521,10 @@ export class PipelineRenderer {
       const catMap = new Map<string, { count: number; icon: string }>()
       for (const t of turn.tools) {
         const cat = TOOL_CATEGORY[t.name]?.cat ?? t.name
-        const icon = TOOL_CATEGORY[t.name]?.icon ?? '\u{1F527}'
         const n = t.count ?? 1
         const ex = catMap.get(cat)
         if (ex) ex.count += n
-        else catMap.set(cat, { count: n, icon })
+        else catMap.set(cat, { count: n, icon: TOOL_CATEGORY[t.name]?.icon ?? "u{1F527}" })
       }
       const hdrH = 30 * this.zoom
       ctx.fillStyle = C.tool + '15'; ctx.strokeStyle = C.tool + '40'; ctx.lineWidth = 1
@@ -656,7 +655,6 @@ export class PipelineRenderer {
     ctx.textAlign = 'center'
     for (let ci = 0; ci < catCount; ci++) {
       const cat = catList[ci]
-      const icon = TOOL_CATEGORY[`_${cat}`]?.icon ?? '·'
       const cx = margin + labelW + ci * colW + colW / 2
       ctx.fillStyle = C.textDim
       ctx.fillText(cat, cx, startY - 10)
@@ -742,52 +740,105 @@ export class PipelineRenderer {
   private drawFooter(ctx: CanvasRenderingContext2D, now: number) {
     if (!this.data) return
     const barY = this.h - FOOTER_H
-    const barW = Math.min(this.w - 40, 500)
+    const barW = Math.min(this.w - 40, 700)
     const barX = (this.w - barW) / 2
 
     drawPanel(ctx, barX - 5, barY, barW + 10, FOOTER_H - 10, {
       hue: 220, sat: 12, light: 10, depth: 3
     }, now, { screws: false })
 
+    // ═══ 左侧：上下文仪表（紧凑，12%）═══
     const ctxRatio = Math.min(this.data.contextUsed / this.data.contextMax, 1)
-    drawGauge(ctx, barX + 28, barY + 25, 14, Math.round(ctxRatio * 100), 100, 'Ctx', 140, now) // 更小的仪表
+    drawGauge(ctx, barX + 25, barY + 28, 12, Math.round(ctxRatio * 100), 100, '', 140, now)
 
-    ctx.fillStyle = C.text; ctx.font = 'bold 16px ui-monospace, monospace'; ctx.textAlign = 'center'
-    ctx.fillText(this.data.totalTokens.toLocaleString(), barX + barW * 0.32, barY + 22)
-    ctx.fillStyle = C.textDim; ctx.font = '9px monospace'
-    ctx.fillText('tok', barX + barW * 0.32, barY + 34)
+    // ═══ 中间：Token（紧凑，20%，纵向居中）═══
+    const tokenX = barX + barW * 0.14
+    const centerY = barY + (FOOTER_H - 10) / 2 // 纵向中心
+    ctx.fillStyle = C.text
+    ctx.font = 'bold 15px ui-monospace, monospace'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle' // 纵向居中对齐
+    ctx.fillText(this.data.totalTokens.toLocaleString(), tokenX, centerY)
+    ctx.fillStyle = C.textDim
+    ctx.font = '9px monospace'
+    const tokW = ctx.measureText(this.data.totalTokens.toLocaleString()).width
+    ctx.fillText('tok', tokenX + tokW + 8, centerY)
     if (this.data.totalTokens > 0) {
       const cost = this.data.totalTokens * 0.0000014
-      ctx.fillStyle = C.textDim + '80'
-      ctx.fillText(`≈ ¥${cost.toFixed(4)}`, barX + barW * 0.5, barY + 46)
+      ctx.fillStyle = C.textDim + '70'
+      ctx.fillText(`\u2248\u00A5${cost.toFixed(4)}`, tokenX, centerY + 14)
     }
 
-    const tlX = barX + barW * 0.48, tlW = barW * 0.48, tlY = barY + 18
+    // ═══ 右侧：时间条（大幅扩展，65%）═══
+    const tlX = barX + barW * 0.35
+    const tlW = barW * 0.62 // 从 48% 扩展到 62%
+    const tlY = barY + 14
+    const tlH = 12 // 更粗的时间条
+    
     let inputT = 0, thinkT = 0, toolT = 0
     for (const turn of this.data.turns) {
       inputT += 50; thinkT += 200
       for (const t of turn.tools) toolT += t.dur * (t.count ?? 1)
     }
     const total = Math.max(inputT + thinkT + toolT, 1)
+    
+    // 时间条背景槽
+    ctx.fillStyle = '#21262D'
+    ctx.beginPath(); ctx.roundRect(tlX, tlY, tlW, tlH, 4); ctx.fill()
+    
     let segX = tlX
-    for (const [label, time, color] of [
-      ['I', inputT, C.user], ['T', thinkT, C.think], ['W', toolT, C.tool],
-    ] as const) {
+    const segments: Array<[string, number, string]> = [
+      ['Input', inputT, C.user],
+      ['Think', thinkT, C.think],
+      ['Tools', toolT, C.tool],
+    ]
+    for (const [label, time, color] of segments) {
       const segW = (time / total) * tlW
       if (segW > 3) {
+        // 填充
         ctx.fillStyle = color + '50'
-        ctx.beginPath(); ctx.roundRect(segX, tlY, segW - 1, 10, 3); ctx.fill()
-        if (segW > 15) {
-          ctx.fillStyle = color + '90'; ctx.font = '9px monospace'; ctx.textAlign = 'center'
-          ctx.fillText(label, segX + segW / 2, tlY + 14)
+        ctx.beginPath(); ctx.roundRect(segX, tlY, segW - 1, tlH, 3); ctx.fill()
+        // 顶部亮线
+        ctx.fillStyle = color + '30'
+        ctx.beginPath(); ctx.roundRect(segX, tlY, segW - 1, 2, 1); ctx.fill()
+        // 标签（如果够宽）
+        if (segW > 35) {
+          ctx.fillStyle = color
+          ctx.font = 'bold 9px monospace'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(label, segX + segW / 2, tlY + tlH / 2)
         }
       }
       segX += segW
     }
-    ctx.fillStyle = C.textDim + '60'; ctx.font = '8px monospace'; ctx.textAlign = 'left'
-    ctx.fillText('⏱', tlX - 12, tlY + 6)
+    
+    // 总时长（右侧）
+    ctx.fillStyle = C.text
+    ctx.font = 'bold 10px monospace'
     ctx.textAlign = 'right'
-    ctx.fillText(`${total}ms`, tlX + tlW + 5, tlY + 6)
+    ctx.textBaseline = 'middle'
+    const totalS = total > 1000 ? (total / 1000).toFixed(1) + 's' : total + 'ms'
+    ctx.fillText(totalS, tlX + tlW + 8, tlY + tlH / 2)
+    
+    // 底部：工具类别汇总（第二行，在时间条下方）
+    const catSummary = this.data.turns
+      .flatMap(t => t.tools)
+      .reduce((map, tool) => {
+        const cat = TOOL_CATEGORY[tool.name]?.cat ?? tool.name
+        map.set(cat, (map.get(cat) ?? 0) + (tool.count ?? 1))
+        return map
+      }, new Map<string, number>())
+    const topCats = Array.from(catSummary.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([cat, n]) => `${cat} ${n}`)
+      .join('  ')
+    
+    ctx.fillStyle = C.textDim + '60'
+    ctx.font = '8px monospace'
+    ctx.textAlign = 'left'
+    ctx.fillText(topCats, tlX, tlY + tlH + 10)
   }
 }
 
