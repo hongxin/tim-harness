@@ -129,6 +129,7 @@ export class PipelineRenderer {
     dragged: boolean          // 是否被用户拖拽过
   }>()
   private draggingId: string | null = null
+  private dragGrabOffset = { dx: 0, dy: 0 }
   /** 锚点屏幕位置（render 时更新，连接线使用同一数据源） */
   private anchorPos = new Map<string, { inX: number; inY: number; outX: number; outY: number }>
   private panStart = { x: 0, y: 0 }
@@ -170,9 +171,7 @@ export class PipelineRenderer {
     this.offsetY = fit.offsetY
   }
 
-  private s2w(sx: number, sy: number): [number, number] {
-    return [(sx - this.offsetX) / this.zoom, (sy - this.offsetY) / this.zoom]
-  }
+  
 
   private w2s(wx: number, wy: number): [number, number] {
     return [wx * this.zoom + this.offsetX, wy * this.zoom + this.offsetY]
@@ -228,6 +227,22 @@ export class PipelineRenderer {
       }
     }
 
+    // ═══ STATION 拖拽检测 ═══
+    for (const [id, node] of this.physNodes) {
+      const nsx = node.x * this.zoom + this.offsetX
+      const nsy = this.offsetY + node.y
+      const nw = this.pipeW * this.zoom
+      const nh = 250 * this.zoom
+      if (sx >= nsx && sx <= nsx + nw && sy >= nsy && sy <= nsy + nh) {
+        this.draggingId = id
+        node.dragged = true
+        node.vx = 0; node.vy = 0
+        this.dragGrabOffset = { dx: sx - nsx, dy: sy - nsy }
+        this.canvas.style.cursor = 'grabbing'
+        return
+      }
+    }
+
     this.panning = true
     this.panStart = { x: e.clientX, y: e.clientY }
   }
@@ -244,12 +259,14 @@ export class PipelineRenderer {
     if (this.draggingId) {
       const node = this.physNodes.get(this.draggingId)
       if (node) {
-        const [wx2, wy2] = this.s2w(e.clientX - r.left, e.clientY - r.top)
-        // 记录速度（用于释放后的惯性）
-        node.vx = (wx2 - node.x) * 0.3
-        node.vy = (wy2 - node.y) * 0.3
-        node.x = wx2
-        node.y = wy2
+        const sx = e.clientX - r.left, sy = e.clientY - r.top
+        // 减去抓取偏移，转换到 node 的坐标系
+        const targetX = (sx - this.dragGrabOffset.dx - this.offsetX) / this.zoom
+        const targetY = sy - this.dragGrabOffset.dy - this.offsetY
+        node.vx = (targetX - node.x) * 0.5
+        node.vy = (targetY - node.y) * 0.5
+        node.x = targetX
+        node.y = targetY
       }
       return
     }
