@@ -1,3 +1,4 @@
+import { drawTextSafe, temporalAlpha, foldRepeats, fitToViewport } from './LayoutGuard'
 import { drawPanel, drawGauge, drawRail } from './PhysicalParts'
 /**
  * PipelineRenderer —— 垂直管道渲染器（完全重新设计）
@@ -120,6 +121,11 @@ function parseTurns(
     }
   }
 
+  // 应用重复折叠（R5）
+  for (const turn of turns) {
+    turn.tools = foldRepeats(turn.tools) as typeof turn.tools
+  }
+
   return {
     turns,
     totalTokens: usage?.total_tokens ?? 0,
@@ -161,17 +167,12 @@ export class PipelineRenderer {
     if (!this.data || this.data.turns.length === 0) return
     const maxTools = Math.max(...this.data.turns.map(t => t.tools.length), 1)
     // 总宽度：含边距（每管道 ±10px 底座 + 首尾 30px padding）
-    const PADDING = 30
-    const totalW = this.data.turns.length * (PIPE_W + GAP_H) - GAP_H + PADDING * 2 + this.data.turns.length * 20
-    const totalH = HEADER_H + USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4 + FOOTER_H + 40
-    // 缩放必须让所有内容都在画布内
-    this.zoom = Math.min(this.w / totalW, (this.h - FOOTER_H) / (totalH - FOOTER_H), 1.0)
-    // 水平居中
-    const scaledContentW = (totalW - PADDING * 2) * this.zoom
-    this.offsetX = (this.w - scaledContentW) / 2
-    // 垂直留出顶部空间
-    const contentH = (totalH - FOOTER_H - 40) * this.zoom
-    this.offsetY = Math.max(20, (this.h - FOOTER_H - contentH) / 2)
+    const contentW = this.data.turns.length * (PIPE_W + GAP_H) - GAP_H
+    const contentH = HEADER_H + USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4
+    const fit = fitToViewport(contentW, contentH, this.w, this.h - FOOTER_H, 1.0, 20)
+    this.zoom = fit.zoom
+    this.offsetX = fit.offsetX
+    this.offsetY = fit.offsetY
   }
 
   private w2s(wx: number, wy: number): [number, number] {
@@ -243,7 +244,10 @@ export class PipelineRenderer {
     for (let ti = 0; ti < turns.length; ti++) {
       const turn = turns[ti]
       const pipeX = ti * (PIPE_W + GAP_H) + 20
+      const tAlpha = temporalAlpha(ti, turns.length)
+      ctx.globalAlpha = tAlpha
       this.drawPipeline(ctx, turn, pipeX, t, now)
+      ctx.globalAlpha = 1
     }
 
     // ═══ 回合间的水平连接（数据流）═══
@@ -333,7 +337,7 @@ export class PipelineRenderer {
     ctx.fillStyle = C.text
     ctx.font = `${14 * this.zoom}px -apple-system, sans-serif`
     ctx.textAlign = 'left'
-    ctx.fillText(turn.userText, px + pw / 2 + 10 * this.zoom, py + uh * 0.38)
+    drawTextSafe(ctx, turn.userText, px + pw / 2 + 10 * this.zoom, py + uh * 0.38, pw * 0.4, 'left')
     // 副标签（回合编号）
     ctx.fillStyle = C.textDim
     ctx.font = `${10 * this.zoom}px monospace`
@@ -431,12 +435,12 @@ export class PipelineRenderer {
       ctx.textAlign = 'left'
       ctx.textBaseline = 'alphabetic'
       // 失败工具加警告前缀
-      ctx.fillText(tool.ok ? tool.name : `⚠ ${tool.name}`, px + 50 * this.zoom, py + toolH * 0.38)
+      drawTextSafe(ctx, tool.ok ? tool.name : `⚠ ${tool.name}`, px + 50 * this.zoom, py + toolH * 0.38, pw - 120 * this.zoom, 'left')
       // 描述（第二行，更小更淡）
       if (tool.desc) {
         ctx.fillStyle = tool.ok ? C.textDim + '90' : '#FF8888'
         ctx.font = `${10 * this.zoom}px -apple-system, sans-serif`
-        ctx.fillText(tool.ok ? tool.desc : '执行失败', px + 50 * this.zoom, py + toolH * 0.72)
+        drawTextSafe(ctx, tool.ok ? (tool.desc || '') : '执行失败', px + 50 * this.zoom, py + toolH * 0.72, pw - 120 * this.zoom, 'left')
       }
       // 状态指示灯（圆形，非文字符号）
       const statusColor = tool.ok ? C.done : C.error
