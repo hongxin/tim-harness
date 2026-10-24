@@ -4,7 +4,7 @@
  * v3 原则（用户方向修正）：讲清楚问题，不堆机械花活。
  * 只保留讲清 tim-harness 原理所必需的五个语义块，每块做大做清楚：
  *
- *   [进料斗 用户意图] ─▶ [汽缸 LLM 六冲程·活塞=当前消息] ─▶ [日志鼓 只追加的真相]
+ *   [意图托盘 用户输入队列] ─▶ [汽缸 LLM 六冲程·活塞=当前消息] ─▶ [日志鼓 只追加的真相]
  *                          ▲   │
  *              进气管(摘要+尾部)│ └─回灌管(工具结果追加)──▶ 鼓
  *   鼓上：滑动视窗(上下文投影) · 68% 刻线+压杆(压缩) · 棘轮(只进不退)
@@ -27,7 +27,7 @@ const WIDTH = 640, HEIGHT = 420;
 
 /* ═══════════ 布局：三个语义块，从左到右一条故事线 ═══════════ */
 // 唯一基准底板（v3 的台面+底板两层合并为一层）
-const BED = { x: -96, y: -52, w: 232, d: 104, r: 7 };
+const BED = { x: -92, y: -50, w: 190, d: 70, r: 7 };
 const BED_Z = 0, BED_H = 8, BED_TOP = BED_Z + BED_H; // 顶 z=8
 
 // ① 进料斗（用户意图）
@@ -45,34 +45,23 @@ const SHELF = { x: -14, y: -46, w: 46, d: 12, r: 3 }; // 仪表小台（缸座�
 const COUNTER = { x: 16, y: -40, r: 8.5, z: 26 };     // 转速表
 const FUSE_XS = [-8, 0, 8], FUSE_Y = -40;             // 保险丝×3
 
-// ③ 日志鼓（真相）
-const DRUM = { x: 76, y: 6, r: 13, z0: 18, z1: 116 };
-const FRAME = { x: 52, y: -12, w: 52, d: 38, r: 4 };
-const SIGHT = { x: 82.5, y: -4.5, w: 4.5, d: 9 };
+// ③ 日志鼓（真相）—— 与汽缸同轴 y=-10：两根管道可直线平行，无弯头
+const DRUM = { x: 76, y: -10, r: 13, z0: 11, z1: 116 }; // z0=底圆盘顶，落地无悬空
+const SIGHT = { x: 79.5, y: -23.5, w: 4.5, d: 9 };      // 视镜贴鼓南面（面向读者）
 const GATE = { r: 14.5, h: 13 };
 const COMPACT_AT = 0.68;
 const MARK_Z = DRUM.z0 + (DRUM.z1 - DRUM.z0) * COMPACT_AT;
 
-// 管道：进（鼓→缸，低）与回（缸→鼓，高）
-const INTAKE = {
-  runA: { x: 44, y: -22, w: 4, d: 36 },   // y 向（z 30..34）
-  elbow: { x: 42, y: 22, w: 9, d: 9 },
-  runB: { x: 46, y: 24, w: 12, d: 4 },    // x 向接鼓
-};
-const RETURN = {
-  runR1: { x: 12, y: -12, w: 40, d: 4 },  // x 向（z 84..88）
-  elbowE1: { x: 48, y: -14, w: 9, d: 9 },
-  runR2: { x: 50, y: -10, w: 4, d: 18 },  // y 向
-  elbowE2: { x: 48, y: 4, w: 9, d: 9 },
-  runR3: { x: 60, y: 6, w: 12, d: 4 },    // x 向入鼓
-};
+// 管道：两根平行直管（缸东面 ↔ 鼓西面）。低位进（上下文视图），高位回（结果追加）
+const INTAKE_RUN = { x: 14, y: -12, w: 49, d: 4 };  // z 28..32
+const RETURN_RUN = { x: 17, y: -12, w: 46, d: 4 };  // z 94..98
 
 const P = k.fitProjection(
   [
     ...k.boxCorners(BED, 0, 0),
-    [ENG.x, ENG.y, PUCK_Z + 12],
-    [DRUM.x + DRUM.r + 6, DRUM.y, 134],
-    [HOP.x - 14, HOP.y, 62],
+    [ENG.x, ENG.y, PUCK_Z + 14],
+    [DRUM.x + 6, DRUM.y + 15, 140],
+    [HOP.x - 16, HOP.y, 24],
   ],
   WIDTH, HEIGHT, { pad: 28, azimuth: 42 },
 );
@@ -89,21 +78,12 @@ function base() {
     S(k.slabOf(BED, 0, BED_H, P, 7, 1.2), { tone: "mid" });
 }
 
-/* ═══════════ ① 进料斗（用户意图，一件大而简的形体）═══════════ */
+/* ═══════════ ① 意图托盘（用户输入队列：一个托盘 + 两块排队消息板）═══════════ */
 function hopper() {
   const out = [];
-  out.push(S(k.cylinder(HOP.x, HOP.y, 3.4, BED_TOP, 18, P, 18), { tone: "mid", crease: "none" })); // 支柱
-  out.push(S(k.slabOf({ x: HOP.x - 13, y: HOP.y - 11, w: 26, d: 22, r: 2 }, 32, 3, P, 3, 0.6), { tone: "mid" })); // 斗底
-  for (const w of [
-    { x: HOP.x - 13, y: HOP.y - 11, w: 26, d: 2.6, r: 1 }, // 后壁
-    { x: HOP.x - 13, y: HOP.y + 8.4, w: 26, d: 2.6, r: 1 }, // 前壁
-  ]) {
-    out.push(S(k.slabOf(w, 35, 16, P, 2, 0.4), { tone: "mid", crease: "lo" }));
-  }
-  // 斗内消息块（两块 hi 小板 = 排队意图）
-  out.push(S(k.slabOf({ x: HOP.x - 9, y: HOP.y - 7, w: 15, d: 11, r: 1.5 }, 35, 3.4, P, 2, 0.4), { tone: "hi" }));
-  // 落料管：斗底 → 缸侧进气口
-  out.push(S(k.slabOf({ x: HOP.x - 2, y: HOP.y - 1.6, w: 4, d: 3.2, r: 1 }, BED_TOP, 35 - BED_TOP, P, 1.5, 0.3), { tone: "mid", crease: "none" }));
+  out.push(S(k.slabOf({ x: HOP.x - 12, y: HOP.y - 9, w: 24, d: 18, r: 2.5 }, BED_TOP, 2.6, P, 3, 0.5), { tone: "lo" })); // 托盘
+  out.push(S(k.slabOf({ x: HOP.x - 8, y: HOP.y - 6, w: 16, d: 12, r: 1.5 }, BED_TOP + 2.6, 3.4, P, 2, 0.4), { tone: "hi" })); // 消息板×2
+  out.push(S(k.slabOf({ x: HOP.x - 8, y: HOP.y - 6, w: 16, d: 12, r: 1.5 }, BED_TOP + 6, 3.4, P, 2, 0.4), { tone: "hi" }));
   return out.join("");
 }
 
@@ -115,11 +95,11 @@ function engineStatic() {
   out.push(S(k.cylinder(ENG.x, ENG.y, HEAD_R, BAR_Z1, HEAD_H, P, 88, 1), { tone: "hi", crease: "lo" }));
   // 火花塞（点火 = LLM 调用；唯一 lit 部件）
   const sx = ENG.x + SPARK.dx, sy = ENG.y + SPARK.dy;
-  out.push(S(k.cylinder(sx, sy, SPARK.r, HEAD_TOP + 2.8, SPARK.h, P, 20), { tone: "hi", lit: true }));
-  out.push(D([at([sx, sy, HEAD_TOP + SPARK.h + 1.4])], { size: 0.75, tone: "lit" }));
-  // 进气/排气端口
-  out.push(S(k.cylinder(HOP.x - 1, ENG.y + BAR_R - 2.4, 2.6, 26, 4, P, 16), { tone: "mid" }));
-  out.push(S(k.cylinder(ENG.x + HEAD_R - 2, ENG.y, 2.6, 84, 4, P, 16), { tone: "mid" }));
+  out.push(S(k.cylinder(sx, sy, SPARK.r, HEAD_TOP, SPARK.h, P, 20), { tone: "hi", lit: true }));
+  out.push(D([at([sx, sy, HEAD_TOP + SPARK.h + 1])], { size: 0.75, tone: "lit" }));
+  // 进气（缸身东面 z28..32）/ 排气（缸头东面 z94..98）端口：与两根直管对齐
+  out.push(S(k.cylinder(ENG.x + BAR_R - 1.4, ENG.y, 2.6, 27, 6, P, 16), { tone: "mid" }));
+  out.push(S(k.cylinder(ENG.x + HEAD_R - 1.4, ENG.y, 2.6, 93, 6, P, 16), { tone: "mid" }));
   return out.join("");
 }
 function pistonGroup() {
@@ -132,8 +112,8 @@ function pistonGroup() {
 /* ═══════════ ③ 日志鼓（真相：只追加 + 视窗 + 压缩）═══════════ */
 function logDrum() {
   const out = [];
-  out.push(S(k.cylinder(DRUM.x, DRUM.y, DRUM.r + 3, BED_TOP, 3, P, 40), { tone: "lo" }));
-  out.push(S(k.cylinder(DRUM.x, DRUM.y, DRUM.r, DRUM.z0, DRUM.z1 - DRUM.z0, P, 64, 1), { tone: "mid", crease: "lo" }));
+  out.push(S(k.cylinder(DRUM.x, DRUM.y, DRUM.r + 3, BED_TOP, 3, P, 40), { tone: "lo" })); // 座盘 8..11
+  out.push(S(k.cylinder(DRUM.x, DRUM.y, DRUM.r, DRUM.z0, DRUM.z1 - DRUM.z0, P, 64, 1), { tone: "mid", crease: "lo" })); // 鼓身 11..116
   out.push(S(k.slabOf(SIGHT, DRUM.z0 + 2, DRUM.z1 - DRUM.z0 - 4, P, 2, 0.4), { tone: "lo", crease: "none" }));
   out.push(L(band(DRUM.x, DRUM.y, DRUM.r + 0.05, MARK_Z, 64), { tone: "hi" }));
   out.push(k.faceTextSvg(k.topMatrix([DRUM.x - DRUM.r - 6, DRUM.y + 9], MARK_Z - 2, P, "x"), "68", { size: 2.2, tone: "lo", anchor: "end" }));
@@ -157,40 +137,31 @@ const floatMark = () =>
   S(k.slabOf({ x: SIGHT.x - 0.6, y: SIGHT.y - 1, w: SIGHT.w + 1.2, d: SIGHT.d + 2, r: 1 }, 0, 1.5, P, 2), { tone: "hi" });
 function pressYoke() {
   const out = [];
-  for (const dx of [-16, 16]) {
-    out.push(S(k.cylinder(DRUM.x + dx, DRUM.y, 2.2, BED_TOP, 116 - BED_TOP, P, 16), { tone: "mid", crease: "none" }));
+  for (const dy of [-15, 15]) { // 南北跨，避开两根 x 向直管
+    out.push(S(k.cylinder(DRUM.x, DRUM.y + dy, 2.2, BED_TOP, 131 - BED_TOP, P, 16), { tone: "mid", crease: "none" }));
   }
-  out.push(S(k.slabOf({ x: DRUM.x - 20, y: DRUM.y - 4, w: 40, d: 8, r: 2 }, 116, 5, P, 3, 0.5), { tone: "mid" }));
+  out.push(S(k.slabOf({ x: DRUM.x - 6, y: DRUM.y - 19, w: 12, d: 38, r: 2 }, 131, 5, P, 3, 0.5), { tone: "mid" }));
   return out.join("");
 }
 function pressRam() {
-  return S(k.cylinder(DRUM.x, DRUM.y, 3, 112, 12, P, 16), { tone: "mid", crease: "none" }) +
-    S(k.cylinder(DRUM.x, DRUM.y, 8.5, 109, 3, P, 52, 0.8), { tone: "hi", crease: "lo" });
+  // 悬于棘轮上方：盘 122..125（间隙 3），杆 125..131 穿梁；下击 3 触及棘轮
+  return S(k.cylinder(DRUM.x, DRUM.y, 3, 125, 6, P, 16), { tone: "mid", crease: "none" }) +
+    S(k.cylinder(DRUM.x, DRUM.y, 8.5, 122, 3, P, 52, 0.8), { tone: "hi", crease: "lo" });
 }
 function pellet(i) {
   // 压缩弹丸直接落在鼓座前缘（不再单独托盘）
-  const x = DRUM.x - 20 + i * 6.6, y = DRUM.y - 14;
-  return S(k.cylinder(x, y, 2.3, BED_TOP + 3, 2.8, P, 16, 0.8), { tone: "hi", crease: "lo" }) +
-    L(k.ring(x, y, 1.2, BED_TOP + 5.8, P, 14), { tone: "lo" });
+  const x = DRUM.x - 21 + i * 6.6, y = DRUM.y - 22;
+  return S(k.cylinder(x, y, 2.3, BED_TOP, 2.8, P, 16, 0.8), { tone: "hi", crease: "lo" }) +
+    L(k.ring(x, y, 1.2, BED_TOP + 2.8, P, 14), { tone: "lo" });
 }
 
-/* ═══════════ 管道（两条 = 核心叙事）═══════════ */
-const duct = (run, z0, h) => S(k.slabOf(run, z0, h, P, 1.5, 0.3), { tone: "mid", crease: "lo" });
+/* ═══════════ 管道（两条平行直管 = 核心叙事）═══════════ */
+const duct = (run, z0) => S(k.slabOf(run, z0, 4, P, 1.5, 0.3), { tone: "mid", crease: "lo" });
 function intakeDuct() {
-  const out = [];
-  out.push(duct(INTAKE.runA, 30, 4));
-  out.push(S(k.slabOf(INTAKE.elbow, 29, 6, P, 1.5, 0.3), { tone: "mid", crease: "lo" }));
-  out.push(duct(INTAKE.runB, 30, 4));
-  return out.join("");
+  return duct(INTAKE_RUN, 28); // 低位：鼓西面 → 缸南东向端口（上下文视图）
 }
 function returnDuct() {
-  const out = [];
-  out.push(duct(RETURN.runR1, 84, 4));
-  out.push(S(k.slabOf(RETURN.elbowE1, 83, 6, P, 1.5, 0.3), { tone: "mid", crease: "lo" }));
-  out.push(duct(RETURN.runR2, 84, 4));
-  out.push(S(k.slabOf(RETURN.elbowE2, 83, 6, P, 1.5, 0.3), { tone: "mid", crease: "lo" }));
-  out.push(duct(RETURN.runR3, 84, 4));
-  return out.join("");
+  return duct(RETURN_RUN, 94); // 高位：缸头东面 → 鼓西面（结果追加）
 }
 
 /* ═══════════ 仪表（一台表 + 三保险丝，装在缸座小台上）═══════════ */
@@ -224,8 +195,8 @@ const FUSES_BROKEN = FUSE_XS.map((fx) => fuse(fx, false)).join("");
 function needleAt(turns) {
   const a = Math.PI * 0.95 - (turns / 24) * Math.PI * 1.8;
   return k.lineOnTop(
-    [COUNTER.x - Math.cos(a) * 2, COUNTER.y - Math.sin(a) * 2],
-    [COUNTER.x + Math.cos(a) * (COUNTER.r - 4), COUNTER.y + Math.sin(a) * (COUNTER.r - 4)],
+    [COUNTER.x - Math.cos(a) * 1.2, COUNTER.y - Math.sin(a) * 1.2],
+    [COUNTER.x + Math.cos(a) * (COUNTER.r - 2.4), COUNTER.y + Math.sin(a) * (COUNTER.r - 2.4)],
     COUNTER.z + 4.6, P,
   );
 }
@@ -233,7 +204,7 @@ function needleAt(turns) {
 const svg = k.figureSvg({
   width: WIDTH, height: HEIGHT,
   label:
-    "Simple six-stroke agent engine. One story, left to right: intent drops into the hopper; the cylinder fires one stroke per LLM call (piston puck = the current message); every tool result is appended onto the ratcheted drum — the append-only session log. The intake duct feeds the cylinder only the context view (sliding sleeve = summary plus tail); past the 68% mark the yoke press folds the head into a gold pellet and the sight-glass level falls. The dial's red zone at 24 is the iteration cap; three straight failures break the fuses.",
+    "Simple six-stroke agent engine. One story, left to right: intent waits in the queue tray; the cylinder fires one stroke per LLM call (piston puck = the current message); every tool result is appended onto the ratcheted drum — the append-only session log. The intake duct feeds the cylinder only the context view (sliding sleeve = summary plus tail); past the 68% mark the yoke press folds the head into a gold pellet and the sight-glass level falls. The dial's red zone at 24 is the iteration cap; three straight failures break the fuses.",
   body: [
     base(),
     hopper(),
@@ -276,7 +247,7 @@ function draw() {
   const s = Math.min(5, Math.floor(phase * 6) % 6);
   const lift = s === 2 ? Math.sin((phase * 6 - 2) * Math.PI) * 14 : s === 3 ? 4.5 + 1.6 * Math.sin(phase * 46) : 0;
   piston.setAttribute("transform", translateAlong(P, [0, 0, lift]));
-  const gateBottom = DRUM.z0 + 1 + Math.max(0.5, logFill * (DRUM.z1 - DRUM.z0) - GATE_H * 0.7);
+  const gateBottom = Math.max(36, Math.min(78, DRUM.z0 + 1 + logFill * (DRUM.z1 - DRUM.z0) - GATE_H * 0.7));
   gate.setAttribute("transform", translateAlong(P, [0, 0, gateBottom]));
   floatM.setAttribute("transform", translateAlong(P, [0, 0, DRUM.z0 + 2 + logFill * (DRUM.z1 - DRUM.z0 - 6)]));
   ram.setAttribute("transform", translateAlong(P, [0, 0, -ramDown]));
@@ -356,7 +327,7 @@ const body = k.plateHtml({
     { mark: "raised", label: "进气管（上下文视图=摘要+尾部）与回灌管（工具结果追加进日志）" },
   ],
   caption:
-    "tim-harness 的核心原理，从左到右一条线讲完：意图从料斗落进汽缸；汽缸每点火一次做一次 LLM 调用（活塞顶上的 puck 就是当前消息），工具结果经回灌管追加到右边的日志鼓上——棘轮保证只进不退，所以页面刷新后永远能继续。进气管只把「上下文视图」（滑动套筒标出的摘要+尾部）喂给汽缸；越过 68% 刻线时压杆落下，把头部压成一颗金色摘要弹丸，视镜水位随之回落——日志本身从不缩短。表盘红区 24 = 迭代上限（超限强制无工具收尾），保险丝 ×3 = 连续三次失败熔断。数字均来自仓库真实常量；缓存经济与四端口等概念见项目文档。",
+    "tim-harness 的核心原理，从左到右一条线讲完：意图在左侧托盘排队进入汽缸；汽缸每点火一次做一次 LLM 调用（活塞顶上的 puck 就是当前消息），工具结果经回灌管追加到右边的日志鼓上——棘轮保证只进不退，所以页面刷新后永远能继续。进气管只把「上下文视图」（滑动套筒标出的摘要+尾部）喂给汽缸；越过 68% 刻线时压杆落下，把头部压成一颗金色摘要弹丸，视镜水位随之回落——日志本身从不缩短。表盘红区 24 = 迭代上限（超限强制无工具收尾），保险丝 ×3 = 连续三次失败熔断。数字均来自仓库真实常量；缓存经济与四端口等概念见项目文档。",
   body: `<div class="iso-stage" tabindex="0" role="slider" aria-label="Six-stroke agent engine: hover scrubs the cycle, R resets" aria-valuemin="0" aria-valuemax="24">${svg}</div>`,
 });
 
