@@ -34,7 +34,7 @@ const TOOL_DESC: Record<string, string> = {
   spawn_agent: '派生子代理', ask_user: '询问', snapshot_save: '保存快照',
 }
 
-const PIPE_W = 300; const USER_H = 70; const THINK_H = 90
+const PIPE_W_MAX = 300; const PIPE_W_MIN = 140; const USER_H = 70; const THINK_H = 90
 const TOOL_H = 52; const DONE_H = 56; const GAP_V = 14; const GAP_H = 60
 const FOOTER_H = 60
 
@@ -107,6 +107,8 @@ export class PipelineRenderer {
   private animId = 0
   private data: PipelineData | null = null
   private zoom = 1
+  private pipeW = PIPE_W_MAX
+  private rowHeight = 500
   private offsetX = 0; private offsetY = 0
   private panning = false
   private panStart = { x: 0, y: 0 }
@@ -130,10 +132,17 @@ export class PipelineRenderer {
 
   private fit() {
     if (!this.data || this.data.turns.length === 0) return
+    const nTurns = this.data.turns.length
+    const availW = this.w - 40
+    const maxPerRow = Math.max(2, Math.floor(availW / (PIPE_W_MIN + GAP_H)))
+    const perRow = Math.min(nTurns, maxPerRow)
+    const nRows = Math.ceil(nTurns / perRow)
+    this.pipeW = Math.min(PIPE_W_MAX, Math.max(PIPE_W_MIN, (availW - (perRow - 1) * GAP_H) / perRow))
     const maxTools = Math.max(...this.data.turns.map(t => t.tools.length), 1)
-    const contentW = this.data.turns.length * (PIPE_W + GAP_H) - GAP_H
-    const contentH = USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4
-    const fit = fitToViewport(contentW, contentH, this.w, this.h - FOOTER_H, 1.0, 20, 0.55)
+    this.rowHeight = USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4 + 20
+    const contentW = perRow * (this.pipeW + GAP_H) - GAP_H
+    const contentH = nRows * this.rowHeight
+    const fit = fitToViewport(contentW, contentH, this.w, this.h - FOOTER_H, 1.0, 20, 0.45)
     this.zoom = fit.zoom
     this.offsetX = fit.offsetX
     this.offsetY = fit.offsetY
@@ -227,20 +236,37 @@ export class PipelineRenderer {
     this.hitItems = []
     const { turns } = this.data
 
+    // 换行排列：每行最多 maxPerRow 个管道
+    const maxPerRow = Math.max(2, Math.floor((this.w - 40) / (this.pipeW + GAP_H)))
     for (let ti = 0; ti < turns.length; ti++) {
       const turn = turns[ti]
-      const pipeX = ti * (PIPE_W + GAP_H) + 20
-      const tAlpha = temporalAlpha(ti, turns.length) * (turn.isPreCompact ? 0.5 : 1.0)
+      const row = Math.floor(ti / maxPerRow)
+      const col = ti % maxPerRow
+      const pipeX = col * (this.pipeW + GAP_H) + 20
+      // 每行有自己的 Y 偏移
+      const rowH = this.rowHeight * this.zoom + 20
+      const pipeYOffset = row * rowH
+      const tAlpha = temporalAlpha(ti, turns.length) * (turn.isPreCompact ? 0.7 : 1.0)
       ctx.globalAlpha = tAlpha
+      ctx.save()
+      ctx.translate(0, pipeYOffset)
       this.drawPipeline(ctx, turn, pipeX, now)
+      ctx.restore()
       ctx.globalAlpha = 1
     }
 
-    // 回合间连接
+    // 回合间连接（考虑换行：同行水平连，跨行跳过）
     for (let ti = 0; ti < turns.length - 1; ti++) {
-      const x1 = ti * (PIPE_W + GAP_H) + 20 + PIPE_W
-      const x2 = (ti + 1) * (PIPE_W + GAP_H) + 20
-      const y = USER_H / 2
+      const row1 = Math.floor(ti / maxPerRow)
+      const col1 = ti % maxPerRow
+      const row2 = Math.floor((ti + 1) / maxPerRow)
+      const col2 = (ti + 1) % maxPerRow
+      
+      if (row1 !== row2) continue // 跨行不画连接线
+      
+      const x1 = col1 * (this.pipeW + GAP_H) + 20 + this.pipeW
+      const x2 = col2 * (this.pipeW + GAP_H) + 20
+      const y = USER_H / 2 + row1 * (this.rowHeight * this.zoom + 20)
       const [sx1, sy1] = this.w2s(x1, y)
       const [sx2, sy2] = this.w2s(x2, y)
       ctx.strokeStyle = C.flow + '50'; ctx.lineWidth = 3
@@ -258,7 +284,7 @@ export class PipelineRenderer {
 
   private drawPipeline(ctx: CanvasRenderingContext2D, turn: PipeTurn, pipeX: number, now: number) {
     const px = pipeX * this.zoom + this.offsetX
-    const pw = PIPE_W * this.zoom
+    const pw = this.pipeW * this.zoom
     let py = this.offsetY
     const gap = GAP_V * this.zoom
 
@@ -357,8 +383,11 @@ export class PipelineRenderer {
           key, x: px + 16 * this.zoom, y: py,
           w: pw - 32 * this.zoom, h: toolH,
         })
+        // 折叠标记不受时间淡化（必须可见可点击）
+        ctx.globalAlpha = Math.max(ctx.globalAlpha, 0.8)
 
         py += toolH + gap * 0.5
+        ctx.globalAlpha = 1 // 恢复（后面会重新设置）
       } else if (tool.folded && expanded) {
         // ═══ 展开状态 ═══
         const count = tool.count ?? 1
