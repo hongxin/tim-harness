@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Anatomy 对照：5轮挖掘机卡片任务</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0A0E14; color:#E6EDF3; font-family:ui-monospace,Menlo,monospace; overflow-x:auto; }
+svg { min-width:1400px; width:100%; height:auto; display:block; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes spin-rev { to { transform:rotate(-360deg); } }
+@keyframes flow { to { stroke-dashoffset:-24; } }
+@keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+@keyframes fade-old { 0%,100%{opacity:.45} 50%{opacity:.55} }
+.gear{transform-origin:center;animation:spin 3s linear infinite}
+.gear-s{transform-origin:center;animation:spin-rev 1.8s linear infinite}
+.flow{stroke-dasharray:6 4;animation:flow .7s linear infinite}
+.pulse{animation:pulse 2s ease-in-out infinite}
+.old-fade{animation:fade-old 4s ease-in-out infinite}
+.title{font-size:14px;fill:#E6EDF3;font-weight:600}
+.sub{font-size:10px;fill:#9DA7B3}
+.lbl{font-size:9px;fill:#9DA7B3}
+.val{font-size:10px;fill:#E6EDF3;font-weight:500}
+.dim{fill:#6E7681}
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1400 620" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1400" height="620" fill="#0A0E14"/>
+  <text x="700" y="24" text-anchor="middle" class="title">
+    挖掘机卡片任务 — 5 轮对话全过程
+  </text>
+  <text x="700" y="40" text-anchor="middle" class="sub">
+    15 次工具调用 · 4,523 tokens · 总耗时 3.2s
+  </text>
+
+  <!-- ═══ 水平流水线：5 个工位段 ═══ -->
+  <!-- 每段 = 一轮对话，从左到右时间推进，越老越淡化 -->
+
+  <!-- 段 1（最老，淡化） -->
+  <g opacity="0.45">
+    <rect x="30" y="70" width="230" height="400" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1"/>
+    <text x="145" y="95" text-anchor="middle" class="val" fill="#FF6B9D">👤 生成挖掘机卡片</text>
+    <text x="145" y="110" text-anchor="middle" class="lbl dim">彩铅简笔·幼儿教育</text>
+    <!-- 分隔 -->
+    <line x1="50" y1="122" x2="240" y2="122" stroke="#30363D" stroke-width="0.5"/>
+    <!-- 齿轮 -->
+    <g class="gear" style="transform-origin:145px 150px">
+      <circle cx="145" cy="150" r="16" fill="none" stroke="#FFD700" stroke-width="1.5" opacity=".6"/>
+      <circle cx="145" cy="150" r="10" fill="none" stroke="#FFD700" stroke-width="1" opacity=".3"/>
+      <g stroke="#FFD700" stroke-width="1.2" opacity=".5">
+        <line x1="145" y1="134" x2="145" y2="128"/><line x1="145" y1="166" x2="145" y2="172"/>
+        <line x1="129" y1="150" x2="123" y2="150"/><line x1="161" y1="150" x2="167" y2="150"/>
+      </g>
+    </g>
+    <text x="145" y="182" text-anchor="middle" class="lbl" fill="#FFD700" opacity=".6">推理 · 3 步</text>
+    <!-- 工具列表（紧凑） -->
+    <g transform="translate(50,200)">
+      <rect width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="18" font-size="11">📚</text><text x="28" y="18" class="lbl">skill</text>
+      <circle cx="178" cy="14" r="3" fill="#00FF88" opacity=".5"/><text x="168" y="18" class="lbl dim">180ms</text>
+      <rect y="34" width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="52" font-size="11">✍️</text><text x="28" y="52" class="lbl">write_file</text>
+      <circle cx="178" cy="48" r="3" fill="#00FF88" opacity=".5"/><text x="168" y="52" class="lbl dim">120ms</text>
+      <rect y="68" width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="86" font-size="11">✂️</text><text x="28" y="86" class="lbl">edit_file</text>
+      <circle cx="178" cy="82" r="3" fill="#00FF88" opacity=".5"/><text x="168" y="86" class="lbl dim">95ms</text>
+    </g>
+    <!-- 结果 -->
+    <rect x="50" y="320" width="190" height="30" rx="4" fill="#00FF8810" stroke="#00FF8840"/>
+    <text x="145" y="339" text-anchor="middle" class="lbl" fill="#00FF88" opacity=".5">✅ 卡片已生成</text>
+    <!-- 耗时标注 -->
+    <text x="145" y="380" text-anchor="middle" class="lbl dim">Turn 1 · 395ms</text>
+    <!-- 折叠指示 -->
+    <text x="145" y="400" text-anchor="middle" class="lbl" fill="#6E7681" opacity=".5">— 最早（已淡化）—</text>
+  </g>
+
+  <!-- 连接管 1→2 -->
+  <line x1="260" y1="270" x2="290" y2="270" stroke="#4A9EFF" stroke-width="3" opacity=".4" class="flow"/>
+  <circle cx="275" cy="270" r="3" fill="#4A9EFF" opacity=".4" class="pulse"/>
+
+  <!-- 段 2 -->
+  <g opacity="0.65">
+    <rect x="290" y="70" width="230" height="400" rx="10" fill="#161B22" stroke="#30363D"/>
+    <text x="405" y="95" text-anchor="middle" class="val" fill="#FF6B9D">👤 调整比例和线条</text>
+    <text x="405" y="110" text-anchor="middle" class="lbl dim">1:1 · 圆润转折</text>
+    <line x1="310" y1="122" x2="500" y2="122" stroke="#30363D" stroke-width="0.5"/>
+    <g class="gear" style="transform-origin:360px 150px">
+      <circle cx="360" cy="150" r="16" fill="none" stroke="#FFD700" stroke-width="1.5" opacity=".7"/>
+      <circle cx="360" cy="150" r="10" fill="none" stroke="#FFD700" stroke-width="1" opacity=".4"/>
+      <g stroke="#FFD700" stroke-width="1.2" opacity=".6">
+        <line x1="360" y1="134" x2="360" y2="128"/><line x1="360" y1="166" x2="360" y2="172"/>
+        <line x1="344" y1="150" x2="338" y2="150"/><line x1="376" y1="150" x2="382" y2="150"/>
+      </g>
+    </g>
+    <text x="405" y="182" text-anchor="middle" class="lbl" fill="#FFD700" opacity=".7">推理 · 4 步</text>
+    <g transform="translate(310,200)">
+      <rect width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="18" font-size="11">📖</text><text x="28" y="18" class="lbl">read_file</text>
+      <circle cx="178" cy="14" r="3" fill="#00FF88" opacity=".6"/><text x="168" y="18" class="lbl dim">80ms</text>
+      <rect y="34" width="190" height="28" rx="4" fill="#FF69B408" stroke="#FF69B430"/>
+      <text x="10" y="52" font-size="11">✂️</text><text x="28" y="52" class="lbl" fill="#FF69B4">edit_file ×2</text>
+      <text x="28" y="52" class="lbl dim" dx="60">（折叠）</text>
+      <rect y="68" width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="86" font-size="11">⚡</text><text x="28" y="86" class="lbl">run_js</text>
+      <circle cx="178" cy="82" r="3" fill="#00FF88" opacity=".6"/><text x="168" y="86" class="lbl dim">450ms</text>
+    </g>
+    <rect x="310" y="320" width="190" height="30" rx="4" fill="#00FF8810" stroke="#00FF8840"/>
+    <text x="405" y="339" text-anchor="middle" class="lbl" fill="#00FF88" opacity=".6">✅ 比例和线条已调</text>
+    <text x="405" y="380" text-anchor="middle" class="lbl dim">Turn 2 · 630ms</text>
+  </g>
+
+  <!-- 连接管 2→3 -->
+  <line x1="520" y1="270" x2="550" y2="270" stroke="#4A9EFF" stroke-width="3" opacity=".5" class="flow"/>
+  <circle cx="535" cy="270" r="3" fill="#4A9EFF" opacity=".5" class="pulse"/>
+
+  <!-- 段 3（轻量） -->
+  <g opacity="0.8">
+    <rect x="550" y="70" width="200" height="300" rx="10" fill="#161B22" stroke="#30363D"/>
+    <text x="650" y="95" text-anchor="middle" class="val" fill="#FF6B9D">👤 继续完成</text>
+    <text x="650" y="110" text-anchor="middle" class="lbl dim">（简短指令）</text>
+    <line x1="570" y1="122" x2="730" y2="122" stroke="#30363D" stroke-width="0.5"/>
+    <g class="gear-s" style="transform-origin:650px 150px">
+      <circle cx="650" cy="150" r="14" fill="none" stroke="#FFD700" stroke-width="1.5" opacity=".8"/>
+      <circle cx="650" cy="150" r="8" fill="none" stroke="#FFD700" stroke-width="1" opacity=".4"/>
+    </g>
+    <text x="650" y="182" text-anchor="middle" class="lbl" fill="#FFD700" opacity=".8">推理 · 1 步</text>
+    <g transform="translate(570,200)">
+      <rect width="160" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="18" font-size="11">✂️</text><text x="28" y="18" class="lbl">edit_file</text>
+      <circle cx="148" cy="14" r="3" fill="#00FF88" opacity=".7"/><text x="138" y="18" class="lbl dim">90ms</text>
+    </g>
+    <rect x="570" y="250" width="160" height="30" rx="4" fill="#00FF8810" stroke="#00FF8840"/>
+    <text x="650" y="269" text-anchor="middle" class="lbl" fill="#00FF88" opacity=".7">✅ 阶段性完成</text>
+    <text x="650" y="310" text-anchor="middle" class="lbl dim">Turn 3 · 90ms（最轻）</text>
+  </g>
+
+  <!-- 连接管 3→4 -->
+  <line x1="750" y1="270" x2="780" y2="270" stroke="#4A9EFF" stroke-width="3" opacity=".6" class="flow"/>
+
+  <!-- 段 4 -->
+  <g opacity="0.9">
+    <rect x="780" y="70" width="230" height="400" rx="10" fill="#161B22" stroke="#30363D"/>
+    <text x="895" y="95" text-anchor="middle" class="val" fill="#FF6B9D">👤 继续全部完成</text>
+    <text x="895" y="110" text-anchor="middle" class="lbl dim">（大量工作）</text>
+    <line x1="800" y1="122" x2="990" y2="122" stroke="#30363D" stroke-width="0.5"/>
+    <g class="gear" style="transform-origin:850px 150px">
+      <circle cx="850" cy="150" r="18" fill="none" stroke="#FFD700" stroke-width="2" opacity=".9"/>
+      <circle cx="850" cy="150" r="12" fill="none" stroke="#FFD700" stroke-width="1" opacity=".5"/>
+      <g stroke="#FFD700" stroke-width="1.5" opacity=".7">
+        <line x1="850" y1="132" x2="850" y2="126"/><line x1="850" y1="168" x2="850" y2="174"/>
+        <line x1="832" y1="150" x2="826" y2="150"/><line x1="868" y1="150" x2="874" y2="150"/>
+      </g>
+    </g>
+    <g class="gear-s" style="transform-origin:910px 165px">
+      <circle cx="910" cy="165" r="10" fill="none" stroke="#FFD700" stroke-width="1" opacity=".5"/>
+    </g>
+    <text x="895" y="192" text-anchor="middle" class="lbl" fill="#FFD700" opacity=".9">推理 · 4 步</text>
+    <g transform="translate(800,210)">
+      <rect width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="18" font-size="11">✍️</text><text x="28" y="18" class="lbl">write_file</text>
+      <circle cx="178" cy="14" r="3" fill="#00FF88" opacity=".8"/><text x="168" y="18" class="lbl dim">130ms</text>
+      <rect y="34" width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="52" font-size="11">✂️</text><text x="28" y="52" class="lbl">edit_file</text>
+      <circle cx="178" cy="48" r="3" fill="#00FF88" opacity=".8"/><text x="168" y="52" class="lbl dim">100ms</text>
+      <rect y="68" width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="86" font-size="11">⚡</text><text x="28" y="86" class="lbl">run_js</text>
+      <circle cx="178" cy="82" r="3" fill="#00FF88" opacity=".8"/><text x="168" y="86" class="lbl dim">350ms</text>
+      <rect y="102" width="190" height="28" rx="4" fill="#00E5FF08" stroke="#00E5FF30"/>
+      <text x="10" y="120" font-size="11">✂️</text><text x="28" y="120" class="lbl">edit_file</text>
+      <circle cx="178" cy="116" r="3" fill="#00FF88" opacity=".8"/><text x="168" y="120" class="lbl dim">110ms</text>
+    </g>
+    <rect x="800" y="360" width="190" height="30" rx="4" fill="#00FF8810" stroke="#00FF8840"/>
+    <text x="895" y="379" text-anchor="middle" class="lbl" fill="#00FF88" opacity=".8">✅ 主体工作完成</text>
+    <text x="895" y="420" text-anchor="middle" class="lbl dim">Turn 4 · 690ms</text>
+  </g>
+
+  <!-- 连接管 4→5 -->
+  <line x1="1010" y1="270" x2="1040" y2="270" stroke="#4A9EFF" stroke-width="3" opacity=".8" class="flow"/>
+  <circle cx="1025" cy="270" r="4" fill="#4A9EFF" class="pulse"/>
+
+  <!-- 段 5（最新，最亮） -->
+  <g opacity="1.0">
+    <rect x="1040" y="70" width="230" height="400" rx="10" fill="#1C2128" stroke="#4A9EFF60" stroke-width="1.5"/>
+    <!-- 当前活跃高亮 -->
+    <rect x="1038" y="68" width="234" height="404" rx="11" fill="none" stroke="#4A9EFF30" stroke-width="3" class="pulse"/>
+    <text x="1155" y="95" text-anchor="middle" class="val" fill="#FF6B9D">👤 扫尾+停止</text>
+    <text x="1155" y="110" text-anchor="middle" class="lbl">保存快照·结束任务</text>
+    <line x1="1060" y1="122" x2="1250" y2="122" stroke="#4A9EFF40" stroke-width="0.5"/>
+    <g class="gear" style="transform-origin:1110px 150px">
+      <circle cx="1110" cy="150" r="18" fill="none" stroke="#FFD700" stroke-width="2"/>
+      <circle cx="1110" cy="150" r="12" fill="none" stroke="#FFD700" stroke-width="1" opacity=".6"/>
+      <g stroke="#FFD700" stroke-width="1.5">
+        <line x1="1110" y1="132" x2="1110" y2="126"/><line x1="1110" y1="168" x2="1110" y2="174"/>
+        <line x1="1092" y1="150" x2="1086" y2="150"/><line x1="1128" y1="150" x2="1134" y2="150"/>
+        <line x1="1097" y1="137" x2="1093" y2="133"/><line x1="1123" y1="163" x2="1127" y2="167"/>
+        <line x1="1123" y1="137" x2="1127" y2="133"/><line x1="1097" y1="163" x2="1093" y2="167"/>
+      </g>
+    </g>
+    <g class="gear-s" style="transform-origin:1170px 165px">
+      <circle cx="1170" cy="165" r="12" fill="none" stroke="#FFD700" stroke-width="1.2" opacity=".7"/>
+      <circle cx="1170" cy="165" r="7" fill="none" stroke="#FFD700" stroke-width="1" opacity=".4"/>
+    </g>
+    <text x="1155" y="192" text-anchor="middle" class="lbl" fill="#FFD700">推理 · 3 步</text>
+    <g transform="translate(1060,210)">
+      <rect width="190" height="28" rx="4" fill="#00E5FF10" stroke="#00E5FF50"/>
+      <text x="10" y="18" font-size="11">📖</text><text x="28" y="18" class="lbl">read_file</text>
+      <circle cx="178" cy="14" r="4" fill="#00FF88"/><text x="168" y="18" class="lbl">✓ 70ms</text>
+      <rect y="34" width="190" height="28" rx="4" fill="#00E5FF10" stroke="#00E5FF50"/>
+      <text x="10" y="52" font-size="11">✂️</text><text x="28" y="52" class="lbl">edit_file</text>
+      <circle cx="178" cy="48" r="4" fill="#00FF88"/><text x="168" y="52" class="lbl">✓ 100ms</text>
+      <rect y="68" width="190" height="28" rx="4" fill="#A0522D10" stroke="#A0522D50"/>
+      <text x="10" y="86" font-size="11">💾</text><text x="28" y="86" class="lbl" fill="#A0522D">snapshot_save</text>
+      <circle cx="178" cy="82" r="4" fill="#00FF88"/><text x="168" y="86" class="lbl">✓ 50ms</text>
+    </g>
+    <rect x="1060" y="330" width="190" height="34" rx="4" fill="#00FF8815" stroke="#00FF8860"/>
+    <text x="1155" y="351" text-anchor="middle" class="val" fill="#00FF88">✅ 扫尾完成·已保存</text>
+    <text x="1155" y="400" text-anchor="middle" class="lbl" fill="#4A9EFF">Turn 5 · 220ms（当前）</text>
+  </g>
+
+  <!-- ═══ 底部仪表区 ═══ -->
+  <g transform="translate(100,500)">
+    <!-- Token 仪表 -->
+    <rect width="180" height="80" rx="8" fill="#161B22" stroke="#30363D"/>
+    <text x="14" y="20" class="lbl">Token 消耗</text>
+    <text x="14" y="45" class="val" fill="#FFA500" font-size="18" font-weight="bold">⚡ 4,523</text>
+    <text x="14" y="62" class="lbl dim">≈ ¥0.0063</text>
+    <!-- 趋势线 -->
+    <polyline points="100,65 115,60 130,58 145,50 160,52 175,42" fill="none" stroke="#FFA500" stroke-width="1.5" opacity=".5"/>
+
+    <!-- 上下文仪表 -->
+    <rect x="200" width="180" height="80" rx="8" fill="#161B22" stroke="#30363D"/>
+    <text x="214" y="20" class="lbl">上下文窗口</text>
+    <!-- 液位容器 -->
+    <rect x="214" y="30" width="152" height="36" rx="4" fill="#21262D" stroke="#30363D"/>
+    <rect x="214" y="50" width="45" height="16" rx="3" fill="#238636" opacity=".3"/>
+    <rect x="214" y="50" width="45" height="16" rx="3" fill="#238636" opacity=".5"/>
+    <text x="290" y="52" text-anchor="middle" class="lbl" fill="#238636">30% (19K/64K)</text>
+    <text x="214" y="75" class="lbl dim">compact 前缀已缓存</text>
+
+    <!-- 时间线 -->
+    <rect x="400" width="400" height="80" rx="8" fill="#161B22" stroke="#30363D"/>
+    <text x="414" y="20" class="lbl">⏱ 执行时间线</text>
+    <!-- 分段条 -->
+    <rect x="414" y="32" width="372" height="12" rx="3" fill="#21262D"/>
+    <rect x="414" y="32" width="40" height="12" rx="3" fill="#FF6B9D" opacity=".6"/>
+    <rect x="458" y="32" width="80" height="12" fill="#FFD700" opacity=".6"/>
+    <rect x="540" y="32" width="180" height="12" fill="#00E5FF" opacity=".6"/>
+    <rect x="722" y="32" width="60" height="12" rx="3" fill="#00FF88" opacity=".6"/>
+    <text x="434" y="56" class="lbl" fill="#FF6B9D">输入</text>
+    <text x="498" y="56" class="lbl" fill="#FFD700">推理</text>
+    <text x="630" y="56" class="lbl" fill="#00E5FF">工具执行</text>
+    <text x="752" y="56" class="lbl" fill="#00FF88">输出</text>
+    <text x="600" y="75" text-anchor="middle" class="lbl dim">总耗时 3.2s · 工具占 56%</text>
+
+    <!-- 效率指标 -->
+    <rect x="820" width="180" height="80" rx="8" fill="#161B22" stroke="#30363D"/>
+    <text x="834" y="20" class="lbl">效率指标</text>
+    <circle cx="850" cy="45" r="4" fill="#00FF88" class="pulse"/>
+    <text x="862" y="49" class="lbl" fill="#00FF88">15/15 工具成功</text>
+    <circle cx="850" cy="65" r="4" fill="#00FF88" opacity=".5"/>
+    <text x="862" y="69" class="lbl dim">零失败 · 高效路径</text>
+  </g>
+</svg>
+</body>
+</html>
