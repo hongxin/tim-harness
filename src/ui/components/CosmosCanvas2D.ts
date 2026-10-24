@@ -205,7 +205,26 @@ flyToTurn(t:number){const c=this.sim.clusters.get(t);if(!c)return;this.ft=t;this
 resetView(){this.ft=null;this.oc?.(null);this.af()}
 getTourSteps(){return[...this.sim.clusters.values()].filter(c=>c.turnId>=0).sort((a,b)=>a.turnId-b.turnId)}
 private ac(tx:number,ty:number,tz:number){this.cam={t:0,d:700,fx:this.ox,fy:this.oy,fz:this.z,tx:-tx,ty:-ty*.5,tz}}
-private af(){if(!this.sim.nodes.size)return;let x1=1/0,x2=-1/0,y1=1/0,y2=-1/0;for(const n of this.sim.nodes.values()){x1=Math.min(x1,n.x-n.radius);x2=Math.max(x2,n.x+n.radius);y1=Math.min(y1,n.y-n.radius);y2=Math.max(y2,n.y+n.radius)}this.z=Math.min(1.3,Math.min(this.w/(x2-x1+250),this.h/(y2-y1+200)));this.ox=-(x1+x2)/2;this.oy=-(y1+y2)/2}
+private af(){
+    if(!this.sim.nodes.size)return
+    // 地图式初始视角：聚焦最近 2-3 个回合（可读优先），非全量缩放
+    // 类似 Google Maps 初始显示城市级别，而非整个地球
+    const all=Array.from(this.sim.nodes.values())
+    const maxTurn=Math.max(...all.map(n=>n.turnId))
+    const recentTurns=all.filter(n=>n.turnId>=Math.max(0,maxTurn-2)) // 最近 3 个回合（含当前）
+    
+    // 如果有较早的节点，把起点也纳入视野（但降低权重）
+    const focusNodes=recentTurns.length>0?recentTurns:all
+    let x1=1/0,x2=-1/0,y1=1/0,y2=-1/0
+    for(const n of focusNodes){x1=Math.min(x1,n.x-n.radius);x2=Math.max(x2,n.x+n.radius);y1=Math.min(y1,n.y-n.radius);y2=Math.max(y2,n.y+n.radius)}
+    // Y 轴始终包含完整层级范围（用户到工具）
+    y1=Math.min(y1,-240);y2=Math.max(y2,420)
+    // 计算缩放：目标是让节点在屏幕上足够大（zoom >= 0.8）
+    this.z=Math.max(0.8,Math.min(1.5,Math.min(this.w/Math.max(x2-x1,300),this.h/(y2-y1+100))))
+    this.ox=-(x1+x2)/2;this.oy=-(y1+y2)/2
+    // 如果 zoom 被上限截断，偏移到右端（最新的回合）
+    if((x2-x1)*this.z>this.w){this.ox=-(x2-this.w/this.z/2)}
+  }
 private w2s(wx:number,wy:number):[number,number]{return[(wx+this.ox)*this.z+this.w/2,(wy+this.oy)*this.z+this.h/2]}
 private s2w(sx:number,sy:number):[number,number]{return[(sx-this.w/2)/this.z-this.ox,(sy-this.h/2)/this.z-this.oy]}
 private be(){this.c.addEventListener('wheel',this.ow);this.c.addEventListener('pointerdown',this.od);this.c.addEventListener('pointermove',this.om);this.c.addEventListener('pointerup',this.ou);this.c.addEventListener('pointerleave',this.ou)}
