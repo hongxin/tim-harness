@@ -314,7 +314,7 @@ export class PipelineRenderer {
     ctx.fillStyle = C.text; ctx.font = `${14 * this.zoom}px -apple-system, sans-serif`
     drawTextSafe(ctx, (turn.isPreCompact ? '⚡ ' : '') + turn.userText, px + pw * 0.22, py + uh * 0.38, pw * 0.7, 'left')
     ctx.fillStyle = C.textDim; ctx.font = `${10 * this.zoom}px monospace`
-    ctx.fillText(`Turn ${turn.turnId}`, px + pw * 0.22, py + uh * 0.72)
+    ctx.fillText(`ST ${turn.turnId}`, px + pw * 0.22, py + uh * 0.72)
     py += uh + gap
 
     // 思考节点
@@ -354,8 +354,19 @@ export class PipelineRenderer {
       }, now, { screws: false })
       ctx.font = `${16 * this.zoom}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
       ctx.fillText('\u{1F527}', px + 26 * this.zoom, py + sumH / 2)
+      // 操作数 + 成功率（Anatomy 风格）
+      const okCount = turn.tools.filter(t => t.ok).reduce((s2, t) => s2 + (t.count ?? 1), 0)
       ctx.fillStyle = C.tool
       ctx.font = `bold ${13 * this.zoom}px sans-serif`
+      ctx.fillText(String(totalCalls), px + 52 * this.zoom, py + sumH * 0.38)
+      ctx.fillStyle = C.textDim; ctx.font = `${9 * this.zoom}px sans-serif`
+      ctx.fillText('ops', px + 54 * this.zoom + String(totalCalls).length * 9 * this.zoom, py + sumH * 0.38)
+      // 成功指示灯 + 比率
+      const okColor = okCount === totalCalls ? C.done : '#FF8888'
+      ctx.fillStyle = okColor + '90'
+      ctx.beginPath(); ctx.arc(px + 56 * this.zoom, py + sumH * 0.7, 3.5 * this.zoom, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = okColor; ctx.font = `${9 * this.zoom}px monospace`
+      ctx.fillText(`${okCount}/${totalCalls}`, px + 64 * this.zoom, py + sumH * 0.7)
       ctx.fillStyle = C.tool + '80'
       ctx.font = `${11 * this.zoom}px sans-serif`
       ctx.textAlign = 'right'
@@ -382,17 +393,29 @@ export class PipelineRenderer {
       ctx.fillText('by category', px + 26 * this.zoom, py + hdrH / 2)
       this.hitItems.push({ key: String(turn.turnId), x: px + 16 * this.zoom, y: py, w: pw - 32 * this.zoom, h: hdrH })
       py += hdrH + gap * 0.3
+      const maxCC = Math.max(...Array.from(catMap.values()).map(v => v.count), 1)
       for (const [cat, info] of catMap) {
-        const catH = 32 * this.zoom
-        ctx.fillStyle = 'rgba(0,229,255,0.06)'; ctx.strokeStyle = 'rgba(0,229,255,0.12)'; ctx.lineWidth = 0.5
-        ctx.beginPath(); ctx.roundRect(px + 24 * this.zoom, py, pw - 48 * this.zoom, catH, 3); ctx.fill(); ctx.stroke()
-        ctx.font = `${12 * this.zoom}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-        ctx.fillText(info.icon, px + 32 * this.zoom, py + catH / 2)
-        ctx.fillStyle = C.text; ctx.font = `${11 * this.zoom}px sans-serif`
-        ctx.fillText(cat, px + 52 * this.zoom, py + catH / 2)
-        ctx.fillStyle = C.tool; ctx.font = `bold ${11 * this.zoom}px monospace`
+        const catH = 30 * this.zoom
+        ctx.fillStyle = 'rgba(0,229,255,0.03)'
+        ctx.beginPath(); ctx.roundRect(px + 24 * this.zoom, py, pw - 48 * this.zoom, catH, 3); ctx.fill()
+        ctx.font = `${10 * this.zoom}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+        ctx.fillText(info.icon, px + 32 * this.zoom, py + catH * 0.3)
+        ctx.fillStyle = C.textDim; ctx.font = `${9 * this.zoom}px sans-serif`
+        ctx.fillText(cat, px + 48 * this.zoom, py + catH * 0.3)
+        ctx.fillStyle = C.tool; ctx.font = `bold ${10 * this.zoom}px monospace`
         ctx.textAlign = 'right'
-        ctx.fillText(`\u00D7${info.count}`, px + pw - 45 * this.zoom, py + catH / 2)
+        ctx.fillText(String(info.count), px + pw - 45 * this.zoom, py + catH * 0.3)
+        const barW = pw - 100 * this.zoom
+        const barH = Math.max(3, 5 * this.zoom)
+        const barY = py + catH * 0.65
+        const barX = px + 32 * this.zoom
+        const fillW = barW * (info.count / maxCC)
+        ctx.fillStyle = '#21262D'
+        ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 2); ctx.fill()
+        ctx.fillStyle = C.tool + '40'
+        ctx.beginPath(); ctx.roundRect(barX, barY, fillW, barH, 2); ctx.fill()
+        ctx.fillStyle = C.tool + '25'
+        ctx.beginPath(); ctx.roundRect(barX, barY, fillW, 1, 0.5); ctx.fill()
         py += catH + gap * 0.2
       }
       const moreH = 26 * this.zoom
