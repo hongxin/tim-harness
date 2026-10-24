@@ -44,7 +44,7 @@ const TOOL_DESC: Record<string, string> = {
 }
 
 const PIPE_W_MAX = 300; const PIPE_W_MIN = 140; const USER_H = 70; const THINK_H = 90
-const TOOL_H = 52; const DONE_H = 56; const GAP_V = 14; const GAP_H = 60
+const DONE_H = 56; const GAP_V = 14; const GAP_H = 60
 const FOOTER_H = 60
 
 interface ToolItem {
@@ -120,9 +120,15 @@ export class PipelineRenderer {
   private rowHeight = 500
   private offsetX = 0; private offsetY = 0
   private panning = false
-  private draggingTurn: string | null = null
-  private dragOffset = { x: 0, y: 0 }
-  private turnPositions = new Map<string, { x: number; y: number }>() // 用户拖拽后的自定义位置
+  // ═══ 物理节点系统（简化力导向，参考 Cosmos）═══
+  private physNodes = new Map<string, {
+    x: number; y: number     // 当前位置
+    vx: number; vy: number   // 速度
+    hx: number; hy: number   // 家位置（蛇形布局）
+    w: number; h: number     // 尺寸（用于碰撞检测）
+    dragged: boolean          // 是否被用户拖拽过
+  }>()
+  private draggingId: string | null = null
   private panStart = { x: 0, y: 0 }
   private expandLevel = new Map<string, number>()
   private hitItems: Array<{ key: string; x: number; y: number; w: number; h: number }> = []
@@ -221,15 +227,24 @@ export class PipelineRenderer {
     this.panStart = { x: e.clientX, y: e.clientY }
   }
 
-  private onUp = () => { this.panning = false; this.draggingTurn = null }
+  private onUp = () => {
+    this.panning = false
+    if (this.draggingId) {
+      // 释放时给予惯性（保留当前速度，物理系统会处理）
+      this.draggingId = null
+    }
+  }
   private onMove = (e: PointerEvent) => {
     const r = this.canvas.getBoundingClientRect()
-    if (this.draggingTurn) {
-      const [wx2, wy2] = this.s2w(e.clientX - r.left, e.clientY - r.top)
-      const existing = this.turnPositions.get(this.draggingTurn)
-      if (existing) {
-        existing.x = wx2 - this.dragOffset.x
-        existing.y = wy2 - this.dragOffset.y
+    if (this.draggingId) {
+      const node = this.physNodes.get(this.draggingId)
+      if (node) {
+        const [wx2, wy2] = this.s2w(e.clientX - r.left, e.clientY - r.top)
+        // 记录速度（用于释放后的惯性）
+        node.vx = (wx2 - node.x) * 0.3
+        node.vy = (wy2 - node.y) * 0.3
+        node.x = wx2
+        node.y = wy2
       }
       return
     }
@@ -249,7 +264,39 @@ export class PipelineRenderer {
     this.canvas.style.cursor = hovering ? 'pointer' : 'grab'
   }
 
-  private loop = () => { this.render(); this.animId = requestAnimationFrame(this.loop) }
+  private loop = () => {
+    this.tickPhysics()
+    this.render()
+    this.animId = requestAnimationFrame(this.loop)
+  }
+
+  /** 简化力导向：弹簧（拉向家位置或用户放置位置）+ 阻尼 */
+  private tickPhysics() {
+    const SPRING = 0.03   // 弹簧强度（越大回弹越快）
+    const DAMPING = 0.85  // 阻尼（越小停止越快）
+    const THRESHOLD = 0.05 // 速度低于此值时停止
+
+    for (const [id, node] of this.physNodes) {
+      // 被拖拽中的节点不更新物理
+      if (this.draggingId === id) continue
+
+      // 弹簧力：拉向家位置
+      node.vx += (node.hx - node.x) * SPRING
+      node.vy += (node.hy - node.y) * SPRING
+
+      // 阻尼
+      node.vx *= DAMPING
+      node.vy *= DAMPING
+
+      // 速度死区（消除微抖动）
+      if (Math.abs(node.vx) < THRESHOLD) node.vx = 0
+      if (Math.abs(node.vy) < THRESHOLD) node.vy = 0
+
+      // 应用位移
+      node.x += node.vx
+      node.y += node.vy
+    }
+  }
 
   private render() {
     const ctx = this.ctx
@@ -262,21 +309,35 @@ export class PipelineRenderer {
     this.hitItems = []
     const { turns } = this.data
 
-    // 蛇形布局：自然延展，不强制换行数
-    // 到达画布宽度后向下折返（像蛇一样弯曲）
+    // 蛇形布局 + 物理节点初始化
     const maxPerRow = Math.max(2, Math.floor((this.w - 40) / (this.pipeW + GAP_H)))
     for (let ti = 0; ti < turns.length; ti++) {
       const turn = turns[ti]
-      const custom = this.turnPositions.get(String(turn.turnId))
-      // 蛇形排列：偶数行从左到右，奇数行从右到左
+      const nodeId = String(turn.turnId)
+      
+      // 计算蛇形默认位置
       const row = Math.floor(ti / maxPerRow)
       const col = row % 2 === 0 ? ti % maxPerRow : maxPerRow - 1 - (ti % maxPerRow)
-      const defaultX = col * (this.pipeW + GAP_H) + 20
-      const pipeX = custom ? custom.x : defaultX
-      const pipeYBase = custom ? custom.y : row * (this.rowHeight * this.zoom + 20)
+      const homeX = col * (this.pipeW + GAP_H) + 20
+      const homeY = row * (this.rowHeight * this.zoom + 20)
+      
+      // 初始化或更新物理节点
+      let node = this.physNodes.get(nodeId)
+      if (!node) {
+        node = { x: homeX, y: homeY, vx: 0, vy: 0, hx: homeX, hy: homeY, w: this.pipeW, h: this.rowHeight, dragged: false }
+        this.physNodes.set(nodeId, node)
+      } else {
+        // 更新家位置（布局可能变化）
+        node.hx = homeX
+        node.hy = homeY
+        // 如果没被拖拽过，跟随家位置
+        if (!node.dragged) { node.x = homeX; node.y = homeY }
+      }
+      
+      const pipeX = node.x
+      const pipeYBase = node.y
       // 每行有自己的 Y 偏移
-      const rowH = this.rowHeight * this.zoom + 20
-      const pipeYOffset = pipeYBase
+            const pipeYOffset = pipeYBase
       const tAlpha = temporalAlpha(ti, turns.length) * (turn.isPreCompact ? 0.7 : 1.0)
       ctx.globalAlpha = tAlpha
       ctx.save()
@@ -308,6 +369,61 @@ export class PipelineRenderer {
       const px = sx1 + 4 + (sx2 - 8 - sx1) * pt
       ctx.fillStyle = C.flow
       ctx.beginPath(); ctx.arc(px, sy1, 3, 0, Math.PI * 2); ctx.fill()
+    }
+
+    // ═══ 相邻 STATION 的有机连接线 ═══
+    for (let ti = 0; ti < turns.length - 1; ti++) {
+      const nodeA = this.physNodes.get(String(turns[ti].turnId))
+      const nodeB = this.physNodes.get(String(turns[ti + 1].turnId))
+      if (!nodeA || !nodeB) continue
+      
+      // 连接从 A 的右/底边到 B 的左/顶边（蛇形方向）
+      const [ax, ay] = this.w2s(nodeA.x + this.pipeW / 2, nodeA.y + 50 * this.zoom)
+      const [bx, by] = this.w2s(nodeB.x - this.pipeW / 2, nodeB.y + 50 * this.zoom)
+      
+      // 有机曲线（贝塞尔，不是直线）
+      const midX = (ax + bx) / 2
+      const midY = (ay + by) / 2
+      const dx = bx - ax
+      const dy = by - ay
+      const len = Math.sqrt(dx * dx + dy * dy) || 1
+      
+      // 曲线控制点（垂直于连线方向偏移）
+      const curveAmount = Math.min(30, len * 0.15)
+      const c1x = midX - dy / len * curveAmount
+      const c1y = midY + dx / len * curveAmount
+      
+      // 画双层曲线（外层粗+透明，内层细+亮）
+      ctx.strokeStyle = 'rgba(74,158,255,0.15)'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.moveTo(ax, ay)
+      ctx.quadraticCurveTo(c1x, c1y, bx, by)
+      ctx.stroke()
+      
+      ctx.strokeStyle = 'rgba(74,158,255,0.4)'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(ax, ay)
+      ctx.quadraticCurveTo(c1x, c1y, bx, by)
+      ctx.stroke()
+      
+      // 流动粒子（沿曲线）
+      const t2 = (now / 1200 + ti * 0.25) % 1
+      const px2 = (1-t2)*(1-t2)*ax + 2*(1-t2)*t2*c1x + t2*t2*bx
+      const py2 = (1-t2)*(1-t2)*ay + 2*(1-t2)*t2*c1y + t2*t2*by
+      ctx.fillStyle = '#4A9EFF'
+      ctx.beginPath(); ctx.arc(px2, py2, 3, 0, Math.PI * 2); ctx.fill()
+      
+      // 箭头（在 B 端）
+      const ang = Math.atan2(by - c1y, bx - c1x)
+      ctx.fillStyle = 'rgba(74,158,255,0.5)'
+      ctx.beginPath()
+      ctx.moveTo(bx - Math.cos(ang) * 8, by - Math.sin(ang) * 8 - Math.sin(ang) * 4)
+      ctx.lineTo(bx - Math.cos(ang) * 8 - Math.cos(ang + Math.PI/2) * 4, by - Math.sin(ang) * 8 - Math.sin(ang + Math.PI/2) * 4)
+      ctx.lineTo(bx - Math.cos(ang) * 8 + Math.cos(ang + Math.PI/2) * 4, by - Math.sin(ang) * 8 + Math.sin(ang + Math.PI/2) * 4)
+      ctx.closePath()
+      ctx.fill()
     }
 
     this.drawFooter(ctx, now)
