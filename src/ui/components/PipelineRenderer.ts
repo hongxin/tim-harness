@@ -26,6 +26,15 @@ const TOOL_ICONS: Record<string, string> = {
   goal_update: '🎯', snapshot_save: '💾', snapshot_list: '📦',
 }
 const toolIcon = (n: string) => TOOL_ICONS[n] ?? '🔧'
+const TOOL_CATEGORY: Record<string, { cat: string; icon: string }> = {
+  read_file: { cat: 'read', icon: '📖' }, write_file: { cat: 'write', icon: '✍️' },
+  edit_file: { cat: 'edit', icon: '✂️' }, run_js: { cat: 'exec', icon: '⚡' },
+  grep: { cat: 'search', icon: '🎯' }, glob: { cat: 'match', icon: '🎯' },
+  ls: { cat: 'browse', icon: '📂' }, web_fetch: { cat: 'fetch', icon: '🌐' },
+  web_search: { cat: 'search', icon: '🔎' }, skill: { cat: 'skill', icon: '📚' },
+  spawn_agent: { cat: 'spawn', icon: '🤖' }, todo_write: { cat: 'plan', icon: '📋' },
+  ask_user: { cat: 'ask', icon: '❓' }, snapshot_save: { cat: 'snap', icon: '💾' },
+}
 
 const TOOL_DESC: Record<string, string> = {
   read_file: '读取文件', write_file: '写入文件', edit_file: '修改文件',
@@ -112,7 +121,7 @@ export class PipelineRenderer {
   private offsetX = 0; private offsetY = 0
   private panning = false
   private panStart = { x: 0, y: 0 }
-  private expandedFolds = new Set<string>()
+  private expandLevel = new Map<string, number>()
   private hitItems: Array<{ key: string; x: number; y: number; w: number; h: number }> = []
 
   constructor(canvas: HTMLCanvasElement) {
@@ -138,8 +147,7 @@ export class PipelineRenderer {
     const perRow = Math.min(nTurns, maxPerRow)
     const nRows = Math.ceil(nTurns / perRow)
     this.pipeW = Math.min(PIPE_W_MAX, Math.max(PIPE_W_MIN, (availW - (perRow - 1) * GAP_H) / perRow))
-    const maxTools = Math.max(...this.data.turns.map(t => t.tools.length), 1)
-    this.rowHeight = USER_H + THINK_H + maxTools * (TOOL_H + GAP_V * 0.5) + DONE_H + GAP_V * 4 + 20
+        this.rowHeight = USER_H + THINK_H + 50 + DONE_H + GAP_V * 4 + 20
     const contentW = perRow * (this.pipeW + GAP_H) - GAP_H
     const contentH = nRows * this.rowHeight
     const fit = fitToViewport(contentW, contentH, this.w, this.h - FOOTER_H, 1.0, 20, 0.45)
@@ -191,10 +199,12 @@ export class PipelineRenderer {
     // 点击检测：折叠/展开项
     for (const item of this.hitItems) {
       if (sx >= item.x && sx <= item.x + item.w && sy >= item.y && sy <= item.y + item.h) {
-        if (this.expandedFolds.has(item.key)) {
-          this.expandedFolds.delete(item.key)
+        const turnId = item.key.split(':')[0]
+        if (item.key.endsWith(':all')) {
+          this.expandLevel.set(turnId, 2)
         } else {
-          this.expandedFolds.add(item.key)
+          const cur = this.expandLevel.get(turnId) ?? 0
+          this.expandLevel.set(turnId, cur === 0 ? 1 : 0)
         }
         return
       }
@@ -289,14 +299,9 @@ export class PipelineRenderer {
     const gap = GAP_V * this.zoom
 
     // 计算实际渲染的工具行数（考虑展开状态）
-    const isExpanded = (toolIdx: number) => this.expandedFolds.has(`${turn.turnId}:${toolIdx}`)
-    const visibleRows = turn.tools.reduce((sum, tool, idx) => {
-      if (tool.folded && isExpanded(idx)) return sum + 1 + (tool.count ?? 1) // 标题行 + 每个调用
-      return sum + 1
-    }, 0)
 
     // 底座
-    const totalH = (USER_H + THINK_H + visibleRows * TOOL_H + (turn.finalText ? DONE_H : 0) + gap * (3 + visibleRows)) * this.zoom
+    const totalH = (USER_H + THINK_H + 50 + (turn.finalText ? DONE_H : 0) + gap * 4) * this.zoom
     drawPanel(ctx, px - 10, py - 8, pw + 20, totalH + 16, {
       hue: 220, sat: 15, light: 10, depth: 4 * this.zoom
     }, now, { screws: true })
@@ -331,151 +336,112 @@ export class PipelineRenderer {
     ctx.fillStyle = C.think; ctx.font = `${14 * this.zoom}px sans-serif`; ctx.textAlign = 'left'
     ctx.fillText('推理', px + pw * 0.5, py + th * 0.3)
     ctx.fillStyle = C.textDim; ctx.font = `${11 * this.zoom}px sans-serif`
-    const totalCalls = turn.tools.reduce((s, t) => s + (t.count ?? 1), 0)
-    ctx.fillText(`${totalCalls} 次调用`, px + pw * 0.5, py + th * 0.55)
     if (turn.finalText) {
       ctx.fillStyle = C.done + '80'
       ctx.fillText(turn.finalText, px + pw * 0.5, py + th * 0.78)
     }
     py += th + gap
 
-    // ═══ 工具列表（含折叠/展开交互）═══
-    for (let toolIdx = 0; toolIdx < turn.tools.length; toolIdx++) {
-      const tool = turn.tools[toolIdx]
-      const key = `${turn.turnId}:${toolIdx}`
-      const expanded = this.expandedFolds.has(key)
+    // ═══ 工具区：三级渐进式披露 ═══
+    const totalCalls = turn.tools.reduce((sum, t) => sum + (t.count ?? 1), 0)
+    const level = this.expandLevel.get(String(turn.turnId)) ?? 0
 
-      if (tool.folded && !expanded) {
-        // ═══ 折叠状态 ═══
-        const toolH = TOOL_H * this.zoom
-        drawPanel(ctx, px + 16 * this.zoom, py, pw - 32 * this.zoom, toolH, {
-          hue: 190, sat: 60, light: 18, depth: 2 * this.zoom
-        }, now, { screws: false, glowAlpha: 0.03 })
-
-        // 图标
-        ctx.font = `${18 * this.zoom}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-        ctx.fillText(toolIcon(tool.name), px + 24 * this.zoom, py + toolH / 2)
-
-        // 折叠名称："run_js ×5"（加粗+青色）
-        ctx.fillStyle = C.tool
-        ctx.font = `bold ${14 * this.zoom}px ui-monospace, monospace`
-        ctx.textBaseline = 'alphabetic'
-        drawTextSafe(ctx, `${tool.name} ×${tool.count}`, px + 52 * this.zoom, py + toolH * 0.38, pw - 140 * this.zoom, 'left')
-
-        // 描述
-        ctx.fillStyle = C.tool + '70'
-        ctx.font = `${10 * this.zoom}px sans-serif`
-        drawTextSafe(ctx, `${tool.count} 次连续调用`, px + 52 * this.zoom, py + toolH * 0.72, pw - 140 * this.zoom, 'left')
-
-        // ▸ 展开按钮（大且明显）
-        ctx.fillStyle = C.tool + '90'
-        ctx.font = `bold ${13 * this.zoom}px sans-serif`
-        ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-        ctx.fillText('▸ 展开', px + pw - 50 * this.zoom, py + toolH / 2)
-
-        // 状态灯
-        const lightX = px + pw - 110 * this.zoom
-        ctx.fillStyle = C.done + '90'
-        ctx.beginPath(); ctx.arc(lightX, py + toolH / 2, 5 * this.zoom, 0, Math.PI * 2); ctx.fill()
-
-        // 注册点击区域
-        this.hitItems.push({
-          key, x: px + 16 * this.zoom, y: py,
-          w: pw - 32 * this.zoom, h: toolH,
-        })
-        // 折叠标记不受时间淡化（必须可见可点击）
-        ctx.globalAlpha = Math.max(ctx.globalAlpha, 0.8)
-
-        py += toolH + gap * 0.5
-        ctx.globalAlpha = 1 // 恢复（后面会重新设置）
-      } else if (tool.folded && expanded) {
-        // ═══ 展开状态 ═══
-        const count = tool.count ?? 1
-
-        // 标题行（点击收起）
-        const headerH = 32 * this.zoom
-        ctx.fillStyle = C.tool + '20'
-        ctx.strokeStyle = C.tool + '50'; ctx.lineWidth = 1
-        ctx.beginPath(); ctx.roundRect(px + 16 * this.zoom, py, pw - 32 * this.zoom, headerH, 4); ctx.fill(); ctx.stroke()
-
-        ctx.fillStyle = C.tool
-        ctx.font = `bold ${12 * this.zoom}px sans-serif`
-        ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-        ctx.fillText(`${toolIcon(tool.name)} ${tool.name}`, px + 28 * this.zoom, py + headerH / 2)
-
-        ctx.fillStyle = C.tool + '80'
-        ctx.font = `${11 * this.zoom}px sans-serif`
+    if (totalCalls > 0 && level === 0) {
+      // Level 0: 一行摘要（缺省，极度紧凑）
+      const sumH = 44 * this.zoom
+      drawPanel(ctx, px + 16 * this.zoom, py, pw - 32 * this.zoom, sumH, {
+        hue: 190, sat: 50, light: 15, depth: 2 * this.zoom
+      }, now, { screws: false })
+      ctx.font = `${16 * this.zoom}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText('\u{1F527}', px + 26 * this.zoom, py + sumH / 2)
+      ctx.fillStyle = C.tool
+      ctx.font = `bold ${13 * this.zoom}px sans-serif`
+      ctx.fillStyle = C.tool + '80'
+      ctx.font = `${11 * this.zoom}px sans-serif`
+      ctx.textAlign = 'right'
+      ctx.fillText('\u25B8 detail', px + pw - 45 * this.zoom, py + sumH / 2)
+      this.hitItems.push({ key: String(turn.turnId), x: px + 16 * this.zoom, y: py, w: pw - 32 * this.zoom, h: sumH })
+      py += sumH + gap
+    } else if (totalCalls > 0 && level === 1) {
+      // Level 1: 按类别汇总
+      const catMap = new Map<string, { count: number; icon: string }>()
+      for (const t of turn.tools) {
+        const cat = TOOL_CATEGORY[t.name]?.cat ?? t.name
+        const icon = TOOL_CATEGORY[t.name]?.icon ?? '\u{1F527}'
+        const n = t.count ?? 1
+        const ex = catMap.get(cat)
+        if (ex) ex.count += n
+        else catMap.set(cat, { count: n, icon })
+      }
+      const hdrH = 30 * this.zoom
+      ctx.fillStyle = C.tool + '15'; ctx.strokeStyle = C.tool + '40'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.roundRect(px + 16 * this.zoom, py, pw - 32 * this.zoom, hdrH, 4); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = C.tool; ctx.font = `bold ${11 * this.zoom}px sans-serif`
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      ctx.fillText('by category', px + 26 * this.zoom, py + hdrH / 2)
+      this.hitItems.push({ key: String(turn.turnId), x: px + 16 * this.zoom, y: py, w: pw - 32 * this.zoom, h: hdrH })
+      py += hdrH + gap * 0.3
+      for (const [cat, info] of catMap) {
+        const catH = 32 * this.zoom
+        ctx.fillStyle = 'rgba(0,229,255,0.06)'; ctx.strokeStyle = 'rgba(0,229,255,0.12)'; ctx.lineWidth = 0.5
+        ctx.beginPath(); ctx.roundRect(px + 24 * this.zoom, py, pw - 48 * this.zoom, catH, 3); ctx.fill(); ctx.stroke()
+        ctx.font = `${12 * this.zoom}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+        ctx.fillText(info.icon, px + 32 * this.zoom, py + catH / 2)
+        ctx.fillStyle = C.text; ctx.font = `${11 * this.zoom}px sans-serif`
+        ctx.fillText(cat, px + 52 * this.zoom, py + catH / 2)
+        ctx.fillStyle = C.tool; ctx.font = `bold ${11 * this.zoom}px monospace`
         ctx.textAlign = 'right'
-        ctx.fillText(`▾ 收起 (${count} 个)`, px + pw - 50 * this.zoom, py + headerH / 2)
-
-        // 注册标题行点击
-        this.hitItems.push({
-          key, x: px + 16 * this.zoom, y: py,
-          w: pw - 32 * this.zoom, h: headerH,
-        })
-        py += headerH + gap * 0.3
-
-        // 每个调用
-        for (let ci = 0; ci < count; ci++) {
-          const callH = TOOL_H * 0.75 * this.zoom
-          ctx.fillStyle = 'rgba(0,229,255,0.06)'
-          ctx.strokeStyle = 'rgba(0,229,255,0.15)'; ctx.lineWidth = 0.5
-          ctx.beginPath(); ctx.roundRect(px + 24 * this.zoom, py, pw - 48 * this.zoom, callH, 3); ctx.fill(); ctx.stroke()
-
-          ctx.textBaseline = 'middle'
-          // 序号
-          ctx.fillStyle = C.textDim; ctx.font = `${9 * this.zoom}px monospace`; ctx.textAlign = 'left'
-          ctx.fillText(`#${ci + 1}`, px + 32 * this.zoom, py + callH / 2)
-          // 图标
-          ctx.font = `${12 * this.zoom}px sans-serif`
-          ctx.fillText(toolIcon(tool.name), px + 62 * this.zoom, py + callH / 2)
-          // 名称
-          ctx.fillStyle = C.text; ctx.font = `${10 * this.zoom}px monospace`
-          ctx.fillText(tool.name, px + 82 * this.zoom, py + callH / 2)
-          // 状态
+        ctx.fillText(`\u00D7${info.count}`, px + pw - 45 * this.zoom, py + catH / 2)
+        py += catH + gap * 0.2
+      }
+      const moreH = 26 * this.zoom
+      ctx.fillStyle = C.tool + '10'
+      ctx.beginPath(); ctx.roundRect(px + 24 * this.zoom, py, pw - 48 * this.zoom, moreH, 3); ctx.fill()
+      ctx.fillStyle = C.tool + '70'; ctx.font = `${10 * this.zoom}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.fillText('\u25B8 view all', px + pw / 2, py + moreH / 2)
+      this.hitItems.push({ key: `${turn.turnId}:all`, x: px + 24 * this.zoom, y: py, w: pw - 48 * this.zoom, h: moreH })
+      py += moreH + gap
+    } else if (totalCalls > 0 && level >= 2) {
+      // Level 2: 完整明细
+      const hdrH = 30 * this.zoom
+      ctx.fillStyle = C.tool + '15'; ctx.strokeStyle = C.tool + '40'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.roundRect(px + 16 * this.zoom, py, pw - 32 * this.zoom, hdrH, 4); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = C.tool; ctx.font = `bold ${11 * this.zoom}px sans-serif`
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      ctx.fillText('all calls', px + 26 * this.zoom, py + hdrH / 2)
+      this.hitItems.push({ key: String(turn.turnId), x: px + 16 * this.zoom, y: py, w: pw - 32 * this.zoom, h: hdrH })
+      py += hdrH + gap * 0.3
+      let callNum = 0
+      for (const tool of turn.tools) {
+        const n = tool.count ?? 1
+        for (let ci = 0; ci < n; ci++) {
+          callNum++
+          const callH = 26 * this.zoom
+          ctx.fillStyle = tool.ok ? 'rgba(0,229,255,0.04)' : 'rgba(255,68,68,0.06)'
+          ctx.strokeStyle = tool.ok ? 'rgba(0,229,255,0.1)' : 'rgba(255,68,68,0.2)'
+          ctx.lineWidth = 0.5
+          ctx.beginPath(); ctx.roundRect(px + 24 * this.zoom, py, pw - 48 * this.zoom, callH, 2); ctx.fill(); ctx.stroke()
+          ctx.fillStyle = C.textDim + '60'; ctx.font = `${8 * this.zoom}px monospace`
+          ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+          ctx.fillText(String(callNum), px + 30 * this.zoom, py + callH / 2)
+          ctx.font = `${10 * this.zoom}px sans-serif`
+          ctx.fillText(toolIcon(tool.name), px + 46 * this.zoom, py + callH / 2)
+          ctx.fillStyle = tool.ok ? C.text : '#FF8888'
+          ctx.font = `${9 * this.zoom}px monospace`
+          ctx.fillText(tool.name, px + 62 * this.zoom, py + callH / 2)
           ctx.fillStyle = tool.ok ? C.done : C.error
           ctx.textAlign = 'right'
-          ctx.fillText(tool.ok ? '✓' : '✗', px + pw - 50 * this.zoom, py + callH / 2)
-
-          py += callH + gap * 0.2
+          ctx.fillText(tool.ok ? '\u2713' : '\u2717', px + pw - 45 * this.zoom, py + callH / 2)
+          py += callH + gap * 0.15
         }
-        py += gap * 0.3
-      } else {
-        // ═══ 普通单个工具 ═══
-        const toolH = TOOL_H * this.zoom
-        const toolHue = tool.ok ? 190 : 0
-        drawPanel(ctx, px + 16 * this.zoom, py, pw - 32 * this.zoom, toolH, {
-          hue: toolHue, sat: tool.ok ? 60 : 90, light: tool.ok ? 15 : 30, depth: 2 * this.zoom
-        }, now, { screws: this.zoom > 0.6 })
-
-        ctx.font = `${18 * this.zoom}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-        ctx.fillText(toolIcon(tool.name), px + 24 * this.zoom, py + toolH / 2)
-
-        ctx.fillStyle = tool.ok ? C.text : '#FF6666'
-        ctx.font = `${13 * this.zoom}px ui-monospace, monospace`
-        ctx.textBaseline = 'alphabetic'
-        drawTextSafe(ctx, tool.ok ? tool.name : `⚠ ${tool.name}`, px + 52 * this.zoom, py + toolH * 0.38, pw - 140 * this.zoom, 'left')
-
-        ctx.fillStyle = tool.ok ? C.textDim + '90' : '#FF8888'
-        ctx.font = `${10 * this.zoom}px sans-serif`
-        drawTextSafe(ctx, tool.ok ? (tool.desc || '') : '执行失败', px + 52 * this.zoom, py + toolH * 0.72, pw - 140 * this.zoom, 'left')
-
-        // 状态灯 + 耗时
-        const lightX = px + pw - 36 * this.zoom
-        const lightY = py + toolH / 2
-        ctx.fillStyle = tool.ok ? C.done + '90' : C.error
-        ctx.beginPath(); ctx.arc(lightX, lightY, 5 * this.zoom, 0, Math.PI * 2); ctx.fill()
-        if (tool.dur > 0) {
-          ctx.fillStyle = C.textDim; ctx.font = `${10 * this.zoom}px monospace`; ctx.textAlign = 'right'
-          const durText = tool.dur > 1000 ? `${(tool.dur / 1000).toFixed(1)}s` : `${tool.dur}ms`
-          ctx.fillText(durText, lightX - 12 * this.zoom, py + toolH * 0.72)
-        }
-
-        py += toolH + gap * 0.5
       }
+      py += gap * 0.5
     }
-    py += gap * 0.5
 
+    // 完成节点
     // 完成节点
     if (turn.finalText) {
       const dh = DONE_H * this.zoom
