@@ -302,9 +302,12 @@ export class PipelineRenderer {
       // 被拖拽中的节点不更新物理
       if (this.draggingId === id) continue
 
-      // 弹簧力：拉向家位置
-      node.vx += (node.hx - node.x) * SPRING
-      node.vy += (node.hy - node.y) * SPRING
+      // 弹簧力：拉向家位置（但如果家=当前位置，力为零，节点自然停留）
+      // 拖拽释放后 hx=node.x，所以弹簧力 = 0 → 节点不动
+      // 只有窗口 resize 等导致家位置变化时才有力
+      const springForce = node.dragged ? 0 : SPRING
+      node.vx += (node.hx - node.x) * springForce
+      node.vy += (node.hy - node.y) * springForce
 
       // 阻尼
       node.vx *= DAMPING
