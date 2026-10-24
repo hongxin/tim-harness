@@ -292,7 +292,8 @@ function portSockets() {
     out.push(D([at([x, base.y + 9, 11.5])], { size: 0.55, tone: "hi" }));
   }
   // 束线：四插座 → 保险丝盒（端口汇聚到熔断保护）
-  out.push(k.wireSvg([base.x + 44, base.y + 9, 11.5], [FUSE.x + FUSE.w, FUSE.y + FUSE.d / 2, 9], { tone: "mid", dotted: false }));
+  // wireSvg 收的是已投影的 2D 屏幕坐标 —— 世界坐标必须先过 iso()（否则画到画布外）
+  out.push(k.wireSvg(at([base.x + 44, base.y + 9, 11.5]), at([FUSE.x + FUSE.w, FUSE.y + FUSE.d / 2, 9]), { tone: "mid", dotted: false }));
   return out.join("");
 }
 
