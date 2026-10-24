@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Anatomy 风格参照：138 次工具调用的机器</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0A0E14; color:#E6EDF3; font-family:ui-monospace,Menlo,monospace; }
+svg { width:100%; max-width:1200px; display:block; margin:0 auto; }
+
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes spin-rev { to { transform:rotate(-360deg); } }
+@keyframes flow { to { stroke-dashoffset:-20; } }
+@keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+@keyframes piston { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
+
+.gear{transform-origin:center;animation:spin 4s linear infinite}
+.gear-s{transform-origin:center;animation:spin-rev 2s linear infinite}
+.flow{stroke-dasharray:6 4;animation:flow .8s linear infinite}
+.pulse{animation:pulse 2s ease-in-out infinite}
+.piston{animation:piston 1.5s ease-in-out infinite}
+
+.t{font-size:12px;fill:#E6EDF3;font-weight:600}
+.s{font-size:10px;fill:#9DA7B3}
+.l{font-size:9px;fill:#6E7681}
+.v{font-size:11px;fill:#E6EDF3}
+.d{fill:#484F58}
+</style>
+</head>
+<body>
+<svg viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="700" fill="#0A0E14"/>
+
+  <!-- ═══ 底座工作台（整个机器坐在这上面）═══ -->
+  <rect x="30" y="560" width="1140" height="30" rx="4" fill="#161B22" stroke="#30363D"/>
+  <!-- 工作台脚 -->
+  <rect x="50" y="590" width="8" height="20" fill="#21262D"/>
+  <rect x="1140" y="590" width="8" height="20" fill="#21262D"/>
+  <!-- 工作台刻度尺 -->
+  <line x1="60" y1="575" x2="1140" y2="575" stroke="#30363D" stroke-width="0.5"/>
+  <g stroke="#30363D" stroke-width="0.5">
+    <line x1="100" y1="573" x2="100" y2="577"/><line x1="200" y1="573" x2="200" y2="577"/>
+    <line x1="300" y1="573" x2="300" y2="577"/><line x1="400" y1="573" x2="400" y2="577"/>
+    <line x1="500" y1="573" x2="500" y2="577"/><line x1="600" y1="573" x2="600" y2="577"/>
+    <line x1="700" y1="573" x2="700" y2="577"/><line x1="800" y1="573" x2="800" y2="577"/>
+    <line x1="900" y1="573" x2="900" y2="577"/><line x1="1000" y1="573" x2="1000" y2="577"/>
+  </g>
+
+  <text x="600" y="30" text-anchor="middle" class="t">
+    AGENT PROCESSING RIG — 挖掘机卡片任务
+  </text>
+  <text x="600" y="46" text-anchor="middle" class="s">
+    5 轮 · 138 次工具调用 · 107,542 tokens · 3.2s
+  </text>
+
+  <!-- ═══ 核心机器：水平排列的 5 个加工站 ═══ -->
+  <!-- 每个站 = 一轮对话，不是分离的管道，而是同一台机器的 5 个工位 -->
+
+  <!-- ═══ 工位 1：原材料输入 + 初加工 ═══ -->
+  <g transform="translate(50,80)">
+    <!-- 站台底板（有厚度） -->
+    <rect x="0" y="0" width="180" height="460" rx="6" fill="#1C2128" stroke="#30363D" stroke-width="1.5"/>
+    <!-- 顶部高光 -->
+    <line x1="4" y1="1" x2="176" y2="1" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+    <!-- 四角螺丝 -->
+    <g fill="#30363D">
+      <circle cx="8" cy="8" r="2"/><circle cx="172" cy="8" r="2"/>
+      <circle cx="8" cy="452" r="2"/><circle cx="172" cy="452" r="2"/>
+    </g>
+
+    <!-- 站编号 -->
+    <text x="90" y="24" text-anchor="middle" class="s" fill="#FF6B9D">STATION 1</text>
+    <text x="90" y="38" text-anchor="middle" class="l">生成挖掘机卡片</text>
+
+    <!-- 主齿轮（这站的核心机械） -->
+    <g class="gear" style="transform-origin:60px 70px">
+      <circle cx="60" cy="70" r="24" fill="none" stroke="#FFD700" stroke-width="2"/>
+      <circle cx="60" cy="70" r="16" fill="none" stroke="#FFD700" stroke-width="1" opacity=".4"/>
+      <g stroke="#FFD700" stroke-width="1.5">
+        <line x1="60" y1="46" x2="60" y2="38"/><line x1="60" y1="94" x2="60" y2="102"/>
+        <line x1="36" y1="70" x2="28" y2="70"/><line x1="84" y1="70" x2="92" y2="70"/>
+        <line x1="43" y1="53" x2="37" y2="47"/><line x1="77" y1="87" x2="83" y2="93"/>
+        <line x1="77" y1="53" x2="83" y2="47"/><line x1="43" y1="87" x2="37" y2="93"/>
+      </g>
+    </g>
+    <!-- 副齿轮 -->
+    <g class="gear-s" style="transform-origin:110px 85px">
+      <circle cx="110" cy="85" r="14" fill="none" stroke="#FFD700" stroke-width="1.5" opacity=".6"/>
+      <circle cx="110" cy="85" r="9" fill="none" stroke="#FFD700" stroke-width="1" opacity=".3"/>
+    </g>
+
+    <!-- 工具活动指示器（不是列出每个工具，而是显示活动量） -->
+    <text x="90" y="120" text-anchor="middle" class="v" fill="#00E5FF">35 operations</text>
+
+    <!-- 活动条形图（按类别汇总，像仪表读数） -->
+    <g transform="translate(20,135)">
+      <text x="0" y="10" class="l">📖 read</text>
+      <rect x="50" y="4" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="4" width="43" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="10" class="l">15</text>
+
+      <text x="0" y="28" class="l">✂️ edit</text>
+      <rect x="50" y="22" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="22" width="29" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="28" class="l">10</text>
+
+      <text x="0" y="46" class="l">⚡ exec</text>
+      <rect x="50" y="40" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="40" width="20" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="46" class="l">7</text>
+
+      <text x="0" y="64" class="l">📂 browse</text>
+      <rect x="50" y="58" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="58" width="6" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="64" class="l">2</text>
+    </g>
+
+    <!-- 成功指示灯 -->
+    <circle cx="30" cy="210" r="4" fill="#00FF88" class="pulse"/>
+    <text x="42" y="214" class="l" fill="#00FF88">34/35 ok</text>
+    <circle cx="30" cy="228" r="4" fill="#FF4444" opacity=".3"/>
+    <text x="42" y="232" class="l" fill="#FF4444">1 error</text>
+
+    <!-- 输出指示 -->
+    <rect x="20" y="250" width="140" height="24" rx="4" fill="#00FF8810" stroke="#00FF8830"/>
+    <text x="90" y="266" text-anchor="middle" class="l" fill="#00FF88">✅ card created</text>
+
+    <!-- 耗时仪表 -->
+    <text x="90" y="310" text-anchor="middle" class="l">⏱ 1.2s</text>
+
+    <!-- 传送带到下一站 -->
+    <line x1="180" y1="300" x2="220" y2="300" stroke="#4A9EFF" stroke-width="3" class="flow" opacity=".5"/>
+  </g>
+
+  <!-- ═══ 工位 2：精调 ═══ -->
+  <g transform="translate(220,80)">
+    <rect x="0" y="0" width="180" height="460" rx="6" fill="#1C2128" stroke="#30363D" stroke-width="1.5"/>
+    <line x1="4" y1="1" x2="176" y2="1" stroke="rgba(255,255,255,0.05)"/>
+    <g fill="#30363D">
+      <circle cx="8" cy="8" r="2"/><circle cx="172" cy="8" r="2"/>
+      <circle cx="8" cy="452" r="2"/><circle cx="172" cy="452" r="2"/>
+    </g>
+
+    <text x="90" y="24" text-anchor="middle" class="s" fill="#FF6B9D">STATION 2</text>
+    <text x="90" y="38" text-anchor="middle" class="l">调整比例和线条</text>
+
+    <g class="gear" style="transform-origin:60px 70px">
+      <circle cx="60" cy="70" r="20" fill="none" stroke="#FFD700" stroke-width="2" opacity=".8"/>
+      <circle cx="60" cy="70" r="13" fill="none" stroke="#FFD700" stroke-width="1" opacity=".3"/>
+    </g>
+
+    <text x="90" y="120" text-anchor="middle" class="v" fill="#00E5FF">31 operations</text>
+
+    <g transform="translate(20,135)">
+      <text x="0" y="10" class="l">📖 read</text>
+      <rect x="50" y="4" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="4" width="55" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="10" class="l">18</text>
+
+      <text x="0" y="28" class="l">✂️ edit</text>
+      <rect x="50" y="22" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="22" width="29" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="28" class="l">10</text>
+
+      <text x="0" y="46" class="l">⚡ exec</text>
+      <rect x="50" y="40" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="40" width="10" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="46" class="l">3</text>
+    </g>
+
+    <circle cx="30" cy="210" r="4" fill="#00FF88"/>
+    <text x="42" y="214" class="l" fill="#00FF88">31/31 ok</text>
+
+    <rect x="20" y="250" width="140" height="24" rx="4" fill="#00FF8810" stroke="#00FF8830"/>
+    <text x="90" y="266" text-anchor="middle" class="l" fill="#00FF88">✅ ratio 1:1, rounded</text>
+
+    <text x="90" y="310" text-anchor="middle" class="l">⏱ 0.8s</text>
+
+    <line x1="180" y1="300" x2="400" y2="300" stroke="#4A9EFF" stroke-width="3" class="flow" opacity=".5"/>
+  </g>
+
+  <!-- ═══ 工位 3：完善 ═══ -->
+  <g transform="translate(400,80)">
+    <rect x="0" y="0" width="180" height="460" rx="6" fill="#1C2128" stroke="#30363D"/>
+    <text x="90" y="24" text-anchor="middle" class="s" fill="#FF6B9D">STATION 3</text>
+    <text x="90" y="38" text-anchor="middle" class="l">继续完成</text>
+
+    <g class="gear-s" style="transform-origin:60px 70px">
+      <circle cx="60" cy="70" r="18" fill="none" stroke="#FFD700" stroke-width="1.5" opacity=".7"/>
+    </g>
+
+    <text x="90" y="120" text-anchor="middle" class="v" fill="#00E5FF">36 operations</text>
+
+    <g transform="translate(20,135)">
+      <text x="0" y="10" class="l">📖 read</text>
+      <rect x="50" y="4" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="4" width="70" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="10" class="l">23</text>
+
+      <text x="0" y="28" class="l">🎯 grep</text>
+      <rect x="50" y="22" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="22" width="15" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="28" class="l">5</text>
+
+      <text x="0" y="46" class="l">✂️ edit</text>
+      <rect x="50" y="40" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="40" width="24" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="46" class="l">8</text>
+    </g>
+
+    <circle cx="30" cy="210" r="4" fill="#00FF88"/>
+    <text x="42" y="214" class="l" fill="#00FF88">36/36 ok</text>
+
+    <rect x="20" y="250" width="140" height="24" rx="4" fill="#00FF8810" stroke="#00FF8830"/>
+    <text x="90" y="266" text-anchor="middle" class="l" fill="#00FF88">✅ details refined</text>
+
+    <text x="90" y="310" text-anchor="middle" class="l">⏱ 0.7s</text>
+
+    <line x1="180" y1="300" x2="580" y2="300" stroke="#4A9EFF" stroke-width="3" class="flow" opacity=".5"/>
+  </g>
+
+  <!-- ═══ 工位 4：验证（有大量执行） ═══ -->
+  <g transform="translate(580,80)">
+    <rect x="0" y="0" width="180" height="460" rx="6" fill="#1C2128" stroke="#30363D"/>
+    <text x="90" y="24" text-anchor="middle" class="s" fill="#FF6B9D">STATION 4</text>
+    <text x="90" y="38" text-anchor="middle" class="l">继续全部完成</text>
+
+    <g class="gear" style="transform-origin:60px 70px">
+      <circle cx="60" cy="70" r="22" fill="none" stroke="#FFD700" stroke-width="2"/>
+    </g>
+
+    <text x="90" y="120" text-anchor="middle" class="v" fill="#00E5FF">31 operations</text>
+
+    <g transform="translate(20,135)">
+      <text x="0" y="10" class="l">⚡ exec</text>
+      <rect x="50" y="4" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="4" width="52" height="8" rx="2" fill="#FFD700" opacity=".4"/>
+      <text x="158" y="10" class="l" fill="#FFD700">15</text>
+
+      <text x="0" y="28" class="l">📖 read</text>
+      <rect x="50" y="22" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="22" width="10" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="28" class="l">3</text>
+
+      <text x="0" y="46" class="l">✂️ edit</text>
+      <rect x="50" y="40" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="40" width="17" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="46" class="l">6</text>
+    </g>
+
+    <!-- 这个站有大量执行——特别标注 -->
+    <rect x="15" y="195" width="150" height="20" rx="3" fill="#FFD70010" stroke="#FFD70030"/>
+    <text x="90" y="209" text-anchor="middle" class="l" fill="#FFD700">⚡ 15 executions (heavy)</text>
+
+    <circle cx="30" cy="240" r="4" fill="#00FF88"/>
+    <text x="42" y="244" class="l" fill="#00FF88">31/31 ok</text>
+
+    <rect x="20" y="260" width="140" height="24" rx="4" fill="#00FF8810" stroke="#00FF8830"/>
+    <text x="90" y="276" text-anchor="middle" class="l" fill="#00FF88">✅ all complete</text>
+
+    <text x="90" y="310" text-anchor="middle" class="l">⏱ 0.6s</text>
+
+    <line x1="180" y1="300" x2="760" y2="300" stroke="#4A9EFF" stroke-width="3" class="flow" opacity=".5"/>
+  </g>
+
+  <!-- ═══ 工位 5：最终收尾 ═══ -->
+  <g transform="translate(760,80)">
+    <rect x="0" y="0" width="180" height="460" rx="6" fill="#1C2128" stroke="#4A9EFF40"/>
+    <!-- 当前活跃站的高亮边框 -->
+    <rect x="-2" y="-2" width="184" height="464" rx="7" fill="none" stroke="#4A9EFF20" stroke-width="2" class="pulse"/>
+
+    <text x="90" y="24" text-anchor="middle" class="s" fill="#FF6B9D">STATION 5</text>
+    <text x="90" y="38" text-anchor="middle" class="l">扫尾+停止</text>
+
+    <g class="gear" style="transform-origin:60px 70px">
+      <circle cx="60" cy="70" r="18" fill="none" stroke="#FFD700" stroke-width="1.5"/>
+    </g>
+
+    <text x="90" y="120" text-anchor="middle" class="v" fill="#00E5FF">5 operations</text>
+
+    <g transform="translate(20,135)">
+      <text x="0" y="10" class="l">💾 snap</text>
+      <rect x="50" y="4" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="4" width="7" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="10" class="l">2</text>
+
+      <text x="0" y="28" class="l">📖 read</text>
+      <rect x="50" y="22" width="100" height="8" rx="2" fill="#21262D"/>
+      <rect x="50" y="22" width="10" height="8" rx="2" fill="#00E5FF" opacity=".3"/>
+      <text x="158" y="28" class="l">3</text>
+    </g>
+
+    <circle cx="30" cy="210" r="4" fill="#00FF88"/>
+    <text x="42" y="214" class="l" fill="#00FF88">5/5 ok</text>
+
+    <rect x="20" y="250" width="140" height="24" rx="4" fill="#00FF8815" stroke="#00FF8840"/>
+    <text x="90" y="266" text-anchor="middle" class="l" fill="#00FF88">✅ snapshot saved</text>
+
+    <text x="90" y="310" text-anchor="middle" class="l">⏱ 0.1s</text>
+  </g>
+
+  <!-- ═══ 底部：资源消耗面板（像机器的仪表盘）═══ -->
+  <g transform="translate(50,570)">
+    <!-- 不是文字标签，而是仪表盘 -->
+    <rect x="0" y="0" width="1100" height="40" rx="4" fill="#161B22" stroke="#30363D"/>
+
+    <!-- 左：token 燃料表 -->
+    <text x="20" y="16" class="l">FUEL</text>
+    <rect x="55" y="8" width="200" height="10" rx="3" fill="#21262D"/>
+    <rect x="55" y="8" width="170" height="10" rx="3" fill="#FFA500" opacity=".3"/>
+    <text x="265" y="16" class="v" fill="#FFA500">107,542 tok</text>
+    <text x="380" y="16" class="l">≈¥0.15</text>
+
+    <!-- 中：效率仪表 -->
+    <text x="440" y="16" class="l">SUCCESS</text>
+    <circle cx="500" cy="13" r="5" fill="#00FF88" class="pulse"/>
+    <text x="512" y="16" class="v" fill="#00FF88">137/138</text>
+    <text x="580" y="16" class="l">99.3%</text>
+
+    <!-- 右：时间刻度 -->
+    <text x="650" y="16" class="l">TIME</text>
+    <rect x="690" y="8" width="300" height="10" rx="3" fill="#21262D"/>
+    <!-- 各站时段 -->
+    <rect x="690" y="8" width="113" height="10" fill="#FF6B9D" opacity=".4"/>
+    <rect x="803" y="8" width="75" height="10" fill="#FFD700" opacity=".4"/>
+    <rect x="878" y="8" width="66" height="10" fill="#00E5FF" opacity=".4"/>
+    <rect x="944" y="8" width="56" height="10" fill="#00E5FF" opacity=".4"/>
+    <rect x="1000" y="8" width="9" height="10" fill="#00FF88" opacity=".4"/>
+    <text x="1015" y="16" class="l">3.4s</text>
+
+    <!-- 第二行 -->
+    <text x="20" y="32" class="l">CTX</text>
+    <rect x="55" y="25" width="200" height="8" rx="2" fill="#21262D"/>
+    <rect x="55" y="25" width="45" height="8" rx="2" fill="#238636" opacity=".3"/>
+    <text x="265" y="32" class="l">18% of 64K</text>
+    <text x="380" y="32" class="l" fill="#238636">prefix cached</text>
+
+    <text x="440" y="32" class="l">TOOLS</text>
+    <text x="490" y="32" class="v">📖×62  ✂️×34  ⚡×25  🎯×8  📦×5  💾×2  ✍️×2</text>
+  </g>
+</svg>
+</body>
+</html>
