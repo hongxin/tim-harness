@@ -443,39 +443,71 @@ export class MachineRenderer {
 
     if (!this.bp) return
 
-    // 工作单元边框（车间感）
+    // 工作单元卡片（长方形面板，卡片式布局）
     const cellMap = new Map<number, { minX: number; maxX: number; minY: number; maxY: number }>()
     for (const st of this.bp.stations) {
       if (!cellMap.has(st.turnId)) {
         cellMap.set(st.turnId, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity })
       }
       const c = cellMap.get(st.turnId)!
-      c.minX = Math.min(c.minX, st.x - 40)
-      c.maxX = Math.max(c.maxX, st.x + 40)
-      c.minY = Math.min(c.minY, st.y - 40)
-      c.maxY = Math.max(c.maxY, st.y + 40)
+      c.minX = Math.min(c.minX, st.x)
+      c.maxX = Math.max(c.maxX, st.x)
+      c.minY = Math.min(c.minY, st.y)
+      c.maxY = Math.max(c.maxY, st.y)
     }
     for (const [tid, c] of cellMap) {
-      const [x1, y1] = this.w2s(c.minX, c.minY)
-      const [x2, y2] = this.w2s(c.maxX, c.maxY)
-      if (x2 < 0 || x1 > this.w) continue // 视口裁剪
-      const w = x2 - x1 + 20
-      const h = y2 - y1 + 20
-      // 单元背景
-      ctx.fillStyle = tid % 2 === 0 ? 'rgba(30,35,45,0.3)' : 'rgba(35,30,40,0.3)'
-      ctx.beginPath(); ctx.roundRect(x1 - 10, y1 - 10, w, h, 8); ctx.fill()
-      // 单元边框
-      ctx.strokeStyle = `hsla(${(tid * 40) % 360}, 40%, 50%, 0.15)`
+      // 固定尺寸卡片（不依赖内容位置，更规整）
+      const cw = 240, ch = 170 // card width/height
+      const cx = c.minX - 20, cy = c.minY - 35 // card 左上角
+      const [sx, sy] = this.w2s(cx, cy)
+      const sw = cw * this.zoom, sh = ch * this.zoom
+      if (sx + sw < 0 || sx > this.w) continue
+      
+      // 卡片阴影（物理深度感）
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,0.4)'
+      ctx.shadowBlur = 8
+      ctx.shadowOffsetY = 4
+      
+      // 卡片背景（实体面板，非虚线）
+      const cardHue = (tid * 47) % 360 // 每回合不同色相
+      const cardGrad = ctx.createLinearGradient(sx, sy, sx, sy + sh)
+      cardGrad.addColorStop(0, `hsla(${cardHue}, 20%, 12%, 0.95)`)
+      cardGrad.addColorStop(1, `hsla(${cardHue}, 15%, 8%, 0.95)`)
+      ctx.fillStyle = cardGrad
+      ctx.beginPath(); ctx.roundRect(sx, sy, sw, sh, 8); ctx.fill()
+      
+      // 卡片边框（顶部亮线，底部暗线——立体感）
+      ctx.shadowColor = 'transparent'
+      ctx.strokeStyle = `hsla(${cardHue}, 40%, 45%, 0.3)`
       ctx.lineWidth = 1
-      ctx.setLineDash([4, 4])
-      ctx.stroke()
-      ctx.setLineDash([])
-      // 回合标签
-      if (this.zoom > 0.4 && tid >= 0) {
-        ctx.fillStyle = DOPAMINE.textDim + '80'
-        ctx.font = `${10 * Math.min(this.zoom, 1.2)}px monospace`
+      ctx.beginPath(); ctx.roundRect(sx, sy, sw, sh, 8); ctx.stroke()
+      // 顶部高光线
+      ctx.strokeStyle = `hsla(${cardHue}, 50%, 60%, 0.15)`
+      ctx.beginPath(); ctx.moveTo(sx + 4, sy + 1); ctx.lineTo(sx + sw - 4, sy + 1); ctx.stroke()
+      
+      ctx.restore()
+      
+      // 卡片标题栏（回合信息）
+      if (this.zoom > 0.35) {
+        const titleH = 22 * this.zoom
+        // 标题栏背景
+        ctx.fillStyle = `hsla(${cardHue}, 35%, 18%, 0.9)`
+        ctx.beginPath(); ctx.roundRect(sx + 1, sy + 1, sw - 2, titleH, [8, 8, 0, 0]); ctx.fill()
+        // 标题文字
+        ctx.fillStyle = `hsla(${cardHue}, 60%, 75%, 0.9)`
+        ctx.font = `bold ${11 * Math.min(this.zoom, 1.2)}px -apple-system, sans-serif`
         ctx.textAlign = 'left'
-        ctx.fillText(`回合 ${tid + 1}`, x1 - 5, y1 - 15)
+        ctx.textBaseline = 'middle'
+        ctx.fillText(`回合 ${tid + 1}`, sx + 8, sy + titleH / 2 + 1)
+        // 回合内工位计数
+        const toolCount = this.bp!.stations.filter(st => st.turnId === tid && !['input-funnel','thinking-gear','output-chute'].includes(st.type)).length
+        if (toolCount > 0) {
+          ctx.fillStyle = `hsla(${cardHue}, 40%, 55%, 0.6)`
+          ctx.font = `${9 * this.zoom}px monospace`
+          ctx.textAlign = 'right'
+          ctx.fillText(`${toolCount} 工具`, sx + sw - 8, sy + titleH / 2 + 1)
+        }
       }
     }
 
