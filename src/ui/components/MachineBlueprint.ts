@@ -222,39 +222,93 @@ export function parseBlueprint(
    布局器：蓝图 → 空间坐标
    ═════════════════════════════════════════════════ */
 
-export const STATION_W = 120   // 工位宽
-export const STATION_GAP = 40  // 工位间距
-export const LINE_Y = 0        // 主轴 Y
-export const BRANCH_Y = 100    // 分支 Y（工具工位）
+/* ═════════════════════════════════════════════════
+   工厂车间布局（非线性装配线）
+   
+   问题：线性装配线在多回合下退化为一条细长的线
+   解法：像真实工厂一样——工位单元紧凑排列在车间地板上
+   
+   布局策略：
+   - 每个回合 = 一个"工作单元"（WorkCell）
+   - 单元内部：📥漏斗(上) → ⚙️齿轮(中) → 🔧工具群(下)
+   - 单元排列：从左到右，到达宽度上限后换行（像文字换行）
+   - 整体形状保持接近方形，不会无限拉长
+   ═════════════════════════════════════════════════ */
+
+export const CELL_W = 260    // 单元宽
+export const CELL_H = 200    // 单元高
+export const CELL_GAP = 30   // 单元间距
+export const MAX_CELLS_PER_ROW = 4 // 每行最多单元数
 
 export function layoutBlueprint(bp: MachineBlueprint): MachineBlueprint {
-  let x = 0
-
+  // 按回合分组
+  const cells = new Map<number, Station[]>()
   for (const st of bp.stations) {
-    // 判断是否是工具工位（放在分支行）
-    const isTool = [
-      'reader', 'writer', 'editor', 'reactor', 'screener',
-      'lister', 'fetcher', 'searcher', 'planner', 'cloner',
-      'asker', 'loader', 'tracker', 'archiver',
-    ].includes(st.type)
-
-    if (isTool) {
-      // 工具工位：放在主轴下方（分支行），紧凑排列
-      st.x = x - STATION_W / 2
-      st.y = BRANCH_Y
-      x += STATION_W * 0.6 // 工具间距更紧凑
-    } else {
-      // 主轴工位：放在主轴上
-      st.x = x
-      st.y = LINE_Y
-      x += STATION_W + STATION_GAP
-    }
+    const tid = st.turnId
+    if (!cells.has(tid)) cells.set(tid, [])
+    cells.get(tid)!.push(st)
   }
 
-  // 仪表位置（右上角区域）
+  // 布局每个单元
+  const cellIds = Array.from(cells.keys()).sort((a, b) => a - b)
+  let cellIndex = 0
+
+  for (const tid of cellIds) {
+    const cellStations = cells.get(tid)!
+    const row = Math.floor(cellIndex / MAX_CELLS_PER_ROW)
+    const col = cellIndex % MAX_CELLS_PER_ROW
+    
+    // 单元左上角坐标（蛇形排列）
+    const cellX = col * (CELL_W + CELL_GAP)
+    const cellY = row * (CELL_H + CELL_GAP)
+    
+    // 单元内部布局
+    const funnels = cellStations.filter(s => s.type === 'input-funnel')
+    const gears = cellStations.filter(s => s.type === 'thinking-gear')
+    const tools = cellStations.filter(s => !['input-funnel','thinking-gear','output-chute','compressor'].includes(s.type))
+    const outputs = cellStations.filter(s => s.type === 'output-chute')
+    const compressors = cellStations.filter(s => s.type === 'compressor')
+    
+    // 📥 输入漏斗：左上
+    for (const f of funnels) {
+      f.x = cellX + 40
+      f.y = cellY + 40
+    }
+    
+    // ⚙️ 推理齿轮：右上
+    for (const g of gears) {
+      g.x = cellX + CELL_W - 60
+      g.y = cellY + 40
+    }
+    
+    // 🔧 工具群：下方网格（紧凑排列，最多 2 行）
+    const toolCols = Math.min(tools.length, 4)
+        tools.forEach((t, ti) => {
+      const tc = ti % toolCols
+      const tr = Math.floor(ti / toolCols)
+      t.x = cellX + 40 + tc * 55
+      t.y = cellY + 110 + tr * 55
+    })
+    
+    // 📤 输出：右下角（如果有）
+    for (const o of outputs) {
+      o.x = cellX + CELL_W - 50
+      o.y = cellY + CELL_H - 40
+    }
+    
+    // ⚡ 压缩机：左下角
+    for (const c of compressors) {
+      c.x = cellX + 30
+      c.y = cellY + CELL_H - 40
+    }
+    
+    cellIndex++
+  }
+
+  // 仪表：右上角固定区域
   bp.gauges.forEach((g, gi) => {
-    g.x = x + 20
-    g.y = -60 + gi * 50
+    g.x = 0
+    g.y = gi * 35
   })
 
   return bp

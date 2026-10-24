@@ -443,6 +443,42 @@ export class MachineRenderer {
 
     if (!this.bp) return
 
+    // 工作单元边框（车间感）
+    const cellMap = new Map<number, { minX: number; maxX: number; minY: number; maxY: number }>()
+    for (const st of this.bp.stations) {
+      if (!cellMap.has(st.turnId)) {
+        cellMap.set(st.turnId, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity })
+      }
+      const c = cellMap.get(st.turnId)!
+      c.minX = Math.min(c.minX, st.x - 40)
+      c.maxX = Math.max(c.maxX, st.x + 40)
+      c.minY = Math.min(c.minY, st.y - 40)
+      c.maxY = Math.max(c.maxY, st.y + 40)
+    }
+    for (const [tid, c] of cellMap) {
+      const [x1, y1] = this.w2s(c.minX, c.minY)
+      const [x2, y2] = this.w2s(c.maxX, c.maxY)
+      if (x2 < 0 || x1 > this.w) continue // 视口裁剪
+      const w = x2 - x1 + 20
+      const h = y2 - y1 + 20
+      // 单元背景
+      ctx.fillStyle = tid % 2 === 0 ? 'rgba(30,35,45,0.3)' : 'rgba(35,30,40,0.3)'
+      ctx.beginPath(); ctx.roundRect(x1 - 10, y1 - 10, w, h, 8); ctx.fill()
+      // 单元边框
+      ctx.strokeStyle = `hsla(${(tid * 40) % 360}, 40%, 50%, 0.15)`
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 4])
+      ctx.stroke()
+      ctx.setLineDash([])
+      // 回合标签
+      if (this.zoom > 0.4 && tid >= 0) {
+        ctx.fillStyle = DOPAMINE.textDim + '80'
+        ctx.font = `${10 * Math.min(this.zoom, 1.2)}px monospace`
+        ctx.textAlign = 'left'
+        ctx.fillText(`回合 ${tid + 1}`, x1 - 5, y1 - 15)
+      }
+    }
+
     // 传送带
     for (const cv of this.bp.conveyors) {
       const from = this.bp.stations.find((s) => s.id === cv.fromStation)
