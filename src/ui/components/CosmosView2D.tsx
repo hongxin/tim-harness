@@ -3,7 +3,8 @@ import { drawContextGauge } from './MachineParts'
 import { useEffect, useRef, useState } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
-import { CosmosCanvas2D, mapSessionToCosmos, type CosmosNode2D, type TurnCluster } from './CosmosCanvas2D'
+import { CosmosCanvas2D, type CosmosNode2D, type TurnCluster } from './CosmosCanvas2D'
+import { mapSessionToCosmosV2 as mapSessionToCosmos } from './TurnStackV2'
 
 export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)

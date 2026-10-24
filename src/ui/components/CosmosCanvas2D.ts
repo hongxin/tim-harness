@@ -360,7 +360,7 @@ if(n.kind==='tool'){
   drawStatusLight(ctx, sx + er * 0.6, sy - er * 0.6, lightStatus, now)
 }else if(false){const hf=er*.85;const fg=ctx.createLinearGradient(sx-hf,sy-hf,sx+hf,sy+hf);fg.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);fg.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);ctx.fillStyle=fg;ctx.beginPath();ctx.roundRect(sx-hf,sy-hf,hf*2,hf*2,2);ctx.fill();ctx.strokeStyle=this.theme.dark?`hsla(${hue},${sa}%,${li+20}%,.4)`:`hsla(${hue},${sa}%,${li-10}%,.5)`;ctx.lineWidth=1;ctx.stroke()}else{const bg2=ctx.createRadialGradient(sx-er*.3,sy-er*.3,0,sx,sy,er);bg2.addColorStop(0,`hsla(${hue},${sa}%,${li+this.theme.bodyBoost}%,.9)`);bg2.addColorStop(1,`hsla(${hue},${sa}%,${li+this.theme.bodyCut}%,.7)`);// TurnStackV2: turn-stack node rendering
     if((n as any).kind==='turn-stack'){
-      const tsn=n as TurnStackNode
+      const tsn=n as any as TurnStackNode
       const isExp=this._expandedStacks.has(n.id)
       drawTurnStackNode(ctx,tsn,sx,sy,er,now,this.theme.dark,this.z,isExp)
       continue
