@@ -6,7 +6,6 @@
 
 [![CI](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml)
 [![Deploy](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml)
-[![Star History Chart](https://api.star-history.com/svg?repos=hongxin/tim-harness&type=Date)](https://star-history.com/#hongxin/tim-harness&Date)
 
 > 🌐 **[在线演示（打开即用，无需安装）](https://hongxin.github.io/tim-harness/)** —— 自备任意
 > OpenAI 兼容 API Key（DeepSeek / OpenAI / 本地 Ollama），密钥只存在你自己的浏览器里。
@@ -100,3 +99,7 @@ v0.4（当前）→ v0.5 多视图打磨 → **v1.0 微信小程序版**
 ---
 
 📚 **[完整文档索引](docs/README.md)** · 🔬 [架构研究](docs/01-dsh-architecture-study.md) · 💰 [Token 经济](docs/04-context-economy-research.md) · 🎨 [可视化设计](docs/08-cosmos-design-principles.md)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hongxin/tim-harness&type=Date)](https://star-history.com/#hongxin/tim-harness&Date)

@@ -6,7 +6,6 @@
 
 [![CI](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml)
 [![Deploy](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml)
-[![Star History Chart](https://api.star-history.com/svg?repos=hongxin/tim-harness&type=Date)](https://star-history.com/#hongxin/tim-harness&Date)
 
 > 🌐 **[Live demo — open and start, zero install](https://hongxin.github.io/tim-harness/)** — bring your own
 > OpenAI-compatible API key (DeepSeek / OpenAI / local Ollama). Your key never leaves your browser.
@@ -100,3 +99,7 @@ v0.4 (current) → v0.5 multi-view polish → **v1.0 WeChat Mini Program**
 ---
 
 📚 **[Full documentation](docs/README.md)** · 🔬 [Architecture study](docs/01-dsh-architecture-study.md) · 💰 [Token economy](docs/04-context-economy-research.md) · 🎨 [Visualization design](docs/08-cosmos-design-principles.md)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hongxin/tim-harness&type=Date)](https://star-history.com/#hongxin/tim-harness&Date)
