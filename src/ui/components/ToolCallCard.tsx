@@ -1,5 +1,6 @@
 /** 工具调用卡片：状态、参数摘要、可展开详情（成功默认折叠、失败自动展开） */
 import { useTranslation } from '../../i18n/useTranslation'
+import { t as tt } from '../../i18n'
 import { useState } from 'react'
 import type { ChatMessage } from '../../core/types'
 
