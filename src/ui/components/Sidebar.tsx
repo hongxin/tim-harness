@@ -69,7 +69,7 @@ export function Sidebar({
         <a className="btn-ghost btn-footer gh-footer" href={REPO_URL} target="_blank" rel="noreferrer" title="{t('sidebar.sourceRepo')}">
           <GitHubMark size={13} />
         </a>
-        <button type="button" className="btn-ghost btn-footer" onClick={onToggleTheme} title={theme === 'dark' ? 't('sidebar.lightTheme')' : 't('sidebar.darkTheme')'}>
+        <button type="button" className="btn-ghost btn-footer" onClick={onToggleTheme} title={theme === 'dark' ? t('sidebar.lightTheme') : t('sidebar.darkTheme')}>
           {theme === 'dark' ? '☀' : '☾'}
         </button>
         <button type="button" className="btn-ghost btn-footer" onClick={onOpenSettings}>
