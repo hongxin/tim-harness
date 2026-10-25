@@ -46,7 +46,7 @@ export function Sidebar({
             className={`session-item ${snapshot.session?.id === s.id ? 'active' : ''}`}
             onClick={() => void runtime.selectSession(s.id)}
           >
-            <div className="session-title">{s.title || '未命名会话'}</div>
+            <div className="session-title">{s.title || t('sidebar.untitled')}</div>
             <div className="session-meta">
               <span>{relTime(s.updatedAt)}</span>
               <button
@@ -55,7 +55,7 @@ export function Sidebar({
                 title="t('sidebar.deleteSession')"
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (confirm(`t('sidebar.deleteSession')「${s.title}」？此操作不可撤销。`)) void runtime.deleteSession(s.id)
+                  if (confirm(t('sidebar.deleteConfirm', { title: s.title }))) void runtime.deleteSession(s.id)
                 }}
               >
                 ×
@@ -73,7 +73,7 @@ export function Sidebar({
           {theme === 'dark' ? '☀' : '☾'}
         </button>
         <button type="button" className="btn-ghost btn-footer" onClick={onOpenSettings}>
-          ⚙ 设置
+          ⚙ {t('topbar.settings')}
         </button>
       </div>
     </aside>

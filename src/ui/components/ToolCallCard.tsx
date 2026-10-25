@@ -39,10 +39,10 @@ function argSummary(name: string, argsRaw?: string): string {
   }
   const p = pick('path', 'file', 'query', 'pattern', 'question', 'url')
   if (p) return p.length > 72 ? p.slice(0, 72) + '…' : p
-  if (name === 'todo_write' && Array.isArray(args.todos)) return `${args.todos.length} 项任务`
+  if (name === 'todo_write' && Array.isArray(args.todos)) return `${args.todos.length} todos`
   if (name === 'run_js') {
     const code = typeof args.code === 'string' ? args.code : ''
-    return `${code.split('\n').length} 行 JS`
+    return `${code.split('\n').length} lines JS`
   }
   if (name === 'spawn_agent') return pick('description') ?? tt('tool.subtask')
   const keys = Object.keys(args)

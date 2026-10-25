@@ -75,7 +75,7 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
               <p className="form-desc">{current.objective}</p>
               <p className="form-desc">
                 {t('goal.rounds')} {current.rounds}/{current.maxRounds}
-                {current.note ? ` · ${current.note}` : ''} —— {t('goal.editHint')}/重启目标。
+                {current.note ? ` · ${current.note}` : ''} —— {t('goal.editHint')}/restart。
               </p>
             </div>
           ) : null}
@@ -103,7 +103,7 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
           </div>
           <div className="modal-foot" style={{ padding: 0, border: 'none' }}>
             <button type="button" className="btn-ghost" onClick={onClose}>
-              取消
+              {t('common.cancel')}
             </button>
             <button type="button" className="btn-primary" disabled={!objective.trim()} onClick={start}>
               🚀 {t('goal.start')}

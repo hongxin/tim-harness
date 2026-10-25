@@ -112,15 +112,15 @@ export function Composer({
           {ctx && ctx.sentChars > 12_000 && (
             <span
               className={`ctx-chip ${ctx.masked ? 'ctx-masked' : ctxPct > 85 ? 'ctx-high' : ''}`}
-              title={`实际发送估算 ${ctx.sentChars.toLocaleString()} / 预算 ${ctx.budgetChars.toLocaleString()} 字符（折叠后）\n会话原始体量 ${ctx.rawChars.toLocaleString()} 字符（${rawPct}%）${ctx.masked ? '\n已自动折叠早期工具输出——完整记录保留在会话中，实际发送的水位才是真实成本' : ''}`}
+              title={`Sent est. ${ctx.sentChars.toLocaleString()} / budget ${ctx.budgetChars.toLocaleString()} 字符（折叠后）\n会话原始体量 ${ctx.rawChars.toLocaleString()} 字符（${rawPct}%）${ctx.masked ? '\n已自动折叠早期工具输出——完整记录保留在会话中，实际发送的水位才是真实成本' : ''}`}
             >
-              {t('composer.context')} {ctxPct}%{ctx.masked ? ` · 已折叠(原 ${rawPct}%)` : ''}
+              {t('composer.context')} {ctxPct}%{ctx.masked ? ` · folded(orig ${rawPct}%)` : ''}
             </span>
           )}
           {cachePct !== null && (
             <span
               className={`ctx-chip ${cachePct >= 60 ? 'ctx-cached' : ''}`}
-              title={`前缀缓存命中 ${usage?.prompt_cache_hit_tokens?.toLocaleString()} / 未命中 ${usage?.prompt_cache_miss_tokens?.toLocaleString()} token（命中部分计费约为十分之一）`}
+              title={`Cache hit ${usage?.prompt_cache_hit_tokens?.toLocaleString()} / miss ${usage?.prompt_cache_miss_tokens?.toLocaleString()} token（命中部分计费约为十分之一）`}
             >
               {t('composer.cacheHit')} {cachePct}%
             </span>

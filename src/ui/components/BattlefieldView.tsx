@@ -34,7 +34,7 @@ export function BattlefieldView({
       <canvas ref={canvasRef} className="cosmos-canvas2d" />
       <div className="cosmos-hud">
         <span className="cosmos-stat">{t('view.battlefield')}</span>
-        <span className="cosmos-stat">{snapshot.session?.messages.length ?? 0} 消息</span>
+        <span className="cosmos-stat">{snapshot.session?.messages.length ?? 0} messages</span>
         <span className="cosmos-stat">{(snapshot.session?.usage.total_tokens ?? 0).toLocaleString()} tokens</span>
       </div>
     </div>

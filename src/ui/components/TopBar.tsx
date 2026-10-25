@@ -70,7 +70,7 @@ export function TopBar({
         <button
           type="button"
           className={`btn-icon ${snapshot.session?.goal ? 'on' : ''}`}
-          title={snapshot.session?.goal ? '目标驱动运行中 · 点击查看' : '目标驱动：设定目标后自动连续推进'}
+          title={snapshot.session?.goal ? t("topbar.goalActive") : t("topbar.goal")}
           onClick={onOpenGoal}
         >
           🎯
@@ -80,8 +80,8 @@ export function TopBar({
           className={`btn-icon ${snapshot.compacting ? 'on' : ''}`}
           title={
             snapshot.compacting
-              ? '正在压缩上下文（LLM 摘要中）…'
-              : '压缩上下文：把早期消息折叠为 LLM 摘要，此后每轮按尾部计费（省 token）'
+              ? t('topbar.compacting')
+              : t('topbar.compactHint')
           }
           disabled={snapshot.compacting}
           onClick={() => void runtime.compactSession(false)}

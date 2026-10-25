@@ -240,12 +240,12 @@ function ConsolePanel({
           </span>
         ) : (
           <span>
-            控制台{entries.length > 0 && <span className="pc-count">{entries.length}</span>}
+            {tt('panel.console.title')}{entries.length > 0 && <span className="pc-count">{entries.length}</span>}
             {errCount > 0 && <span className="pc-err">{errCount} {tt('panel.console.error')}</span>}
           </span>
         )}
         <button type="button" className="pc-clear" onClick={onClear}>
-          清空
+          {tt('panel.console.clear')}
         </button>
       </div>
       <div className="pc-body" ref={bodyRef}>
@@ -524,14 +524,14 @@ export function RightPanel({
         <div className="rp-body">
           <div className="rp-actions">
             <button type="button" className="btn-ghost btn-sm" onClick={() => importInput.current?.click()}>
-              导入
+              {tt('panel.import')}
             </button>
             <input ref={importInput} type="file" multiple hidden onChange={(e) => void importFiles(e.target.files)} />
             <button type="button" className="btn-ghost btn-sm" onClick={() => void exportWorkspace()}>
-              导出
+              {tt('panel.export')}
             </button>
             <button type="button" className="btn-ghost btn-sm" onClick={() => void refresh()}>
-              刷新
+              {tt('panel.refresh')}
             </button>
             <span
               className={`fs-badge ${fsMode === 'opfs' ? 'fs-opfs' : 'fs-mem'}`}
@@ -563,7 +563,7 @@ export function RightPanel({
                   if (label !== null) void runtime.uiSaveSnapshot(label).then(() => refreshSnapshots())
                 }}
               >
-                保存
+                {tt('common.save')}
               </button>
             </div>
             {snapshots.length === 0 ? (
@@ -738,7 +738,7 @@ export function RightPanel({
                   </button>
                 )}
                 <button type="button" className="btn-ghost btn-sm" onClick={() => void downloadFile(modal.path)}>
-                  下载
+              {tt('panel.download')}
                 </button>
                 <button type="button" className="btn-icon" onClick={() => setModal(null)}>
                   ×
@@ -776,10 +776,10 @@ export function RightPanel({
                   ))}
                 </span>
                 <button type="button" className="btn-ghost btn-sm" onClick={reloadPreview} title="tt('panel.reload')">
-                  ⟳ 重载
+              ⟳ {tt('panel.reloadBtn')}
                 </button>
                 <button type="button" className="btn-ghost btn-sm" onClick={openInNewTab} title="tt('panel.newTab')（Blob URL）">
-                  ↗ 新标签
+              ↗ {tt('panel.newTab')}
                 </button>
                 <button type="button" className="btn-icon" onClick={() => setBigView(false)} title="Close (Esc)">
                   ×

@@ -31,7 +31,7 @@ export function CosmosView({
       <canvas ref={canvasRef} className="cosmos-canvas2d" />
       <div className="cosmos-hud">
         <span className="cosmos-stat">{t('view.cosmos')}</span>
-        <span className="cosmos-stat">{snapshot.session?.messages.length ?? 0} 消息</span>
+        <span className="cosmos-stat">{snapshot.session?.messages.length ?? 0} messages</span>
       </div>
       {selected && (
         <div className="cosmos-detail">
@@ -42,7 +42,7 @@ export function CosmosView({
           </div>
           {selected.toolName && <span className="cosmos-detail-meta">🔧 {selected.toolName}</span>}
           {selected.durationMs != null && (
-            <span className="cosmos-detail-meta">{selected.isError ? '✗ 失败' : '✓ 成功'} · {(selected.durationMs / 1000).toFixed(1)}s</span>
+            <span className="cosmos-detail-meta">{selected.isError ? t('view.fail') : t('view.success')} · {(selected.durationMs / 1000).toFixed(1)}s</span>
           )}
         </div>
       )}
