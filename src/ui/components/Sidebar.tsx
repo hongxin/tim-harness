@@ -6,7 +6,6 @@ import { relTime } from '../fileops'
 import { GitHubMark, REPO_URL } from './GitHubMark'
 
 export function Sidebar({
-  const { t } = useTranslation()
   snapshot,
   runtime,
   onOpenSettings,
@@ -19,6 +18,7 @@ export function Sidebar({
   theme: string
   onToggleTheme: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <aside className="sidebar">
       <div className="brand">
