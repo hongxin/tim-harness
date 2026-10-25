@@ -1,16 +1,13 @@
 /** 目标驱动 UI：状态条（GoalBar）+ 创建/管理弹窗（GoalModal） */
+import { useTranslation } from '../../i18n/useTranslation'
 import { useState } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
 
-const STATUS_LABEL: Record<string, string> = {
-  active: '推进中',
-  paused: '已暂停',
-  complete: '已完成',
-  blocked: '受阻',
-}
+// Status labels via t()
 
 export function GoalBar({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const goal = snapshot.session?.goal
   if (!goal) return null
   const cls = `goal-bar goal-${goal.status}`
@@ -21,7 +18,7 @@ export function GoalBar({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runt
         {goal.objective}
       </span>
       <span className="goal-meta">
-        {STATUS_LABEL[goal.status]} · 轮次 {goal.rounds}/{goal.maxRounds}
+        {t(`goal.status.${goal.status}`)} · {t('goal.rounds')} {goal.rounds}/{goal.maxRounds}
         {goal.note ? ` · ${goal.note}` : ''}
       </span>
       <span className="goal-actions">
@@ -36,7 +33,7 @@ export function GoalBar({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runt
           </button>
         )}
         {(goal.status === 'paused' || goal.status === 'blocked' || goal.status === 'complete') && goal.status !== 'complete' && (
-          <button type="button" className="btn-ghost btn-sm" onClick={() => runtime.cancelGoal()} title="移除目标">
+          <button type="button" className="btn-ghost btn-sm" onClick={() => runtime.cancelGoal()} title={t('goal.remove')}>
             ✕ 移除
           </button>
         )}
@@ -46,6 +43,7 @@ export function GoalBar({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runt
 }
 
 export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClose: () => void }) {
+  const { t } = useTranslation()
   const existing = runtime.getSnapshot().session?.goal
   const [objective, setObjective] = useState(existing?.objective ?? '')
   const [maxRounds, setMaxRounds] = useState(existing?.maxRounds ?? 8)
@@ -68,16 +66,16 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
         </div>
         <div className="settings-body">
           <p className="form-desc">
-            设定一个目标，智能体将自动连续推进（多轮工具调用）直到完成、受阻或达到轮次上限；
+            {t('goal.desc')}（多轮工具调用）直到完成、受阻或达到轮次上限；
             随时可在对话区上方的目标条暂停/继续。每轮仍是完整的 harness 循环（工具/预览/审计全部可用）。
           </p>
           {current ? (
             <div className="form-block">
-              <div className="form-block-title">当前目标 · {STATUS_LABEL[current.status]}</div>
+              <div className="form-block-title">{t('goal.current')} · {STATUS_LABEL[current.status]}</div>
               <p className="form-desc">{current.objective}</p>
               <p className="form-desc">
                 轮次 {current.rounds}/{current.maxRounds}
-                {current.note ? ` · ${current.note}` : ''} —— 修改下方内容并保存可更新/重启目标。
+                {current.note ? ` · ${current.note}` : ''} —— {t('goal.editHint')}/重启目标。
               </p>
             </div>
           ) : null}
@@ -93,7 +91,7 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
               />
             </div>
             <div className="form-row" style={{ marginTop: 10 }}>
-              <label>最大轮次</label>
+              <label>{t('goal.maxRounds')}</label>
               <input
                 type="number"
                 min={1}

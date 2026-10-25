@@ -317,4 +317,5 @@ export const en: Record<string, string> = {
   'chat.example.computeTitle': 'Compute & verify',
   'chat.example.gameTitle': 'Build a playable game',
   'chat.example.dataTitle': 'Data analysis',
+  'goal.rounds': 'Round',
 }
