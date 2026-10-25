@@ -235,7 +235,7 @@ export const zh: Record<string, string> = {
 
   /* ═══ Sidebar ═══ */
   'sidebar.tagline': '浏览器里的大模型工程台',
-  'sidebar.newSession': '+ 新会话',
+  'sidebar.newSession': '新会话',
   'sidebar.untitled': '未命名会话',
   'sidebar.deleteSession': '删除会话',
   'sidebar.deleteConfirm': '删除会话「{title}」？此操作不可撤销。',

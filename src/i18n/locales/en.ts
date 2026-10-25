@@ -235,7 +235,7 @@ export const en: Record<string, string> = {
 
   /* ═══ Sidebar ═══ */
   'sidebar.tagline': 'LLM engineering in your browser',
-  'sidebar.newSession': '+ New session',
+  'sidebar.newSession': 'New session',
   'sidebar.untitled': 'Untitled session',
   'sidebar.deleteSession': 'Delete session',
   'sidebar.deleteConfirm': 'Delete session "{title}"? This cannot be undone.',
