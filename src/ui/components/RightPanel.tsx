@@ -250,7 +250,7 @@ function ConsolePanel({
       </div>
       <div className="pc-body" ref={bodyRef}>
         {filtered.length === 0 ? (
-          <div className="pc-empty">{entries.length === 0 ? t('panel.console.empty') : t('panel.console.noMatch')}</div>
+          <div className="pc-empty">{entries.length === 0 ? tt('panel.console.empty') : tt('panel.console.noMatch')}</div>
         ) : (
           filtered.map((c, i) => (
             <div key={i} className={`pc-line pc-${levelClass(c.level)}`}>
