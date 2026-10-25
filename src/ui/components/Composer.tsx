@@ -133,6 +133,7 @@ export function Composer({
 }
 
 export function AskUserCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const ask = snapshot.ask
   const [text, setText] = useState('')
   if (!ask) return null
