@@ -1,3 +1,4 @@
+import { useTranslation } from '../../i18n/useTranslation'
 /** 顶栏：会话标题（可编辑）、模型信息、目标驱动、右侧面板开关 */
 import { useEffect, useState } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
@@ -20,6 +21,7 @@ export function TopBar({
   viewMode: 'chat' | 'cosmos' | 'machine' | 'battlefield'
   onToggleView: () => void
 }) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
   useEffect(() => {
@@ -60,7 +62,7 @@ export function TopBar({
         <button
           type="button"
           className={`btn-icon ${viewMode !== 'chat' ? 'on' : ''}`}
-          title={viewMode === 'chat' ? '智能体可视化：🌌 星图视图' : viewMode === 'cosmos' ? '智能体可视化：🏭 装配线视图' : viewMode === 'machine' ? '智能体可视化：⚔️ 战场模式' : '返回对话视图'}
+          title={viewMode === 'chat' ? t('topbar.viewToggle.chat') : viewMode === 'cosmos' ? t('topbar.viewToggle.cosmos') : viewMode === 'machine' ? t('topbar.viewToggle.machine') : t('topbar.viewToggle.battlefield')}
           onClick={onToggleView}
         >
           {viewMode === 'chat' ? '🌌' : viewMode === 'cosmos' ? '🏭' : viewMode === 'machine' ? '⚔️' : '💬'}

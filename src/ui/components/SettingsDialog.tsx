@@ -1,4 +1,5 @@
 /** 设置对话框：Provider 管理、CORS 代理、搜索服务、数据管理 */
+import { useTranslation } from '../../i18n/useTranslation'
 import { useEffect, useState } from 'react'
 import type { AppSettings, ProviderSetting } from '../../core/types'
 import type { HarnessRuntime } from '../../core/runtime'
@@ -6,6 +7,7 @@ import { downloadText } from '../fileops'
 import { genId } from '../../core/util/path'
 
 export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; onClose: () => void }) {
+  const { t, locale, setLocale } = useTranslation()
   const [draft, setDraft] = useState<AppSettings | null>(null)
   const [activeId, setActiveId] = useState('')
   const [tab, setTab] = useState<'model' | 'web' | 'data'>('model')
@@ -78,7 +80,20 @@ export function SettingsDialog({ runtime, onClose }: { runtime: HarnessRuntime; 
 
         <div className="settings-tabs">
           <button type="button" className={`rp-tab ${tab === 'model' ? 'on' : ''}`} onClick={() => setTab('model')}>
-            模型服务
+            
+        {/* ═══ Language ═══ */}
+        <div className="settings-section">
+          <div className="settings-section-title">{t('settings.language')}</div>
+          <div className="seg-row">
+            {(['en', 'zh'] as const).map(l => (
+              <button key={l} type="button" className={`seg-btn ${locale === l ? 'on' : ''}`} onClick={() => setLocale(l)}>
+                {l === 'en' ? 'English' : '中文'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+模型服务
           </button>
           <button type="button" className={`rp-tab ${tab === 'web' ? 'on' : ''}`} onClick={() => setTab('web')}>
             网络
