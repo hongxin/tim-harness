@@ -1058,3 +1058,7 @@ body.rp-resizing iframe { pointer-events: none; }
   padding: 6px 14px; font-size: 13px; color: var(--text-dim); z-index: 10;
   max-width: 500px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
 }
+
+.ft-btn-danger:hover {
+  color: #f85149;
+}

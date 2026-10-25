@@ -280,4 +280,28 @@ export const globTool: ToolDef = {
 }
 
 /** 供 UI 使用的路径工具再导出 */
+
+export const deleteFileTool: ToolDef = {
+  name: 'delete_file',
+  description:
+    'Delete a file or directory (recursively) from the virtual workspace. This operation cannot be undone — consider using snapshot_save first if you need a backup.',
+  parameters: {
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'File or directory path to delete' },
+    },
+    required: ['path'],
+  },
+  async execute(args, ctx) {
+    const path = normalizePath(String(args.path ?? ''))
+    if (!path || path === '/') return err('不能删除根目录')
+    try {
+      await ctx.fs.deleteEntry(path)
+      return ok(`已删除 ${displayPath(path)}`)
+    } catch (e) {
+      return err(`删除 ${displayPath(path)} 失败：${e instanceof Error ? e.message : e}`)
+    }
+  },
+}
+
 export { joinPath }

@@ -972,6 +972,13 @@ export class HarnessRuntime {
     this.notify()
   }
 
+  /** UI 层删除工作区文件/目录（递推 fsRev 刷新文件面板） */
+  async uiDeleteEntry(path: string): Promise<void> {
+    await this.deps.fs.deleteEntry(path)
+    this.fsRev++
+    this.notify()
+  }
+
   /** 删除指定快照（不影响工作区文件） */
   async uiDeleteSnapshot(id: string): Promise<boolean> {
     const okDel = await deleteSnapshot(this.deps.kv, id)

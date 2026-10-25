@@ -94,6 +94,7 @@ function TreeRow({
   onOpenFile,
   onPreviewHtml,
   onDownload,
+  onDelete,
 }: {
   node: TreeNode
   depth: number
@@ -103,6 +104,7 @@ function TreeRow({
   onOpenFile: (n: TreeNode) => void
   onPreviewHtml: (n: TreeNode) => void
   onDownload: (n: TreeNode) => void
+  onDelete: (n: TreeNode) => void
 }) {
   const isOpen = expanded.has(node.path)
   const isHtml = /\.html?$/i.test(node.name)
@@ -148,6 +150,17 @@ function TreeRow({
             >
               ↓
             </button>
+            <button
+              type="button"
+              className="ft-btn ft-btn-danger"
+              title="删除"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(node)
+              }}
+            >
+              ×
+            </button>
           </span>
         )}
       </div>
@@ -164,6 +177,7 @@ function TreeRow({
             onOpenFile={onOpenFile}
             onPreviewHtml={onPreviewHtml}
             onDownload={onDownload}
+            onDelete={onDelete}
           />
         ))}
     </>
@@ -403,6 +417,17 @@ export function RightPanel({
     document.body.classList.add('rp-resizing')
   }
 
+  const deleteFile = async (node: { path: string; name: string; kind: string }) => {
+    const msg = node.kind === 'dir'
+      ? `删除目录「${node.name}」及其所有内容？此操作不可恢复。`
+      : `删除文件「${node.name}」？此操作不可恢复。`
+    if (!confirm(msg)) return
+    try {
+      await runtime.uiDeleteEntry(node.path)
+    } catch (e) {
+      alert(`删除失败：${e instanceof Error ? e.message : e}`)
+    }
+  }
   const downloadFile = async (path: string) => {
     try {
       const name = path.split('/').pop() ?? 'file'
@@ -607,6 +632,7 @@ export function RightPanel({
                   onOpenFile={(n) => void openModal(n.path)}
                   onPreviewHtml={(n) => openPreview(n.path)}
                   onDownload={(n) => void downloadFile(n.path)}
+                  onDelete={(n) => void deleteFile(n)}
                 />
               ))}
             </div>
