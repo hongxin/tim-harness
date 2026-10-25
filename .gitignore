@@ -5,3 +5,8 @@ dist-smoke/
 *.log
 .DS_Store
 dist-wechat-smoke/
+
+# 实验过程截图不同步（本地保留即可）
+docs/experiments/*.png
+docs/screenshots/*
+!docs/screenshots/live-demo.png
