@@ -97,7 +97,7 @@ src/
 
 **为什么 core 要平台无关？** 长期目标是微信小程序版（wx.request / wx storage /
 wx FileSystemManager 适配器）。core 的可移植性由 `npm run smoke` 持续验证：
-在纯 Node 中以 mock 适配器跑通完整 agent loop（155 项断言）。
+在纯 Node 中以 mock 适配器跑通完整 agent loop（157 项断言）。
 
 ## 开发命令
 

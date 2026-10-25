@@ -302,6 +302,33 @@ export class HarnessRuntime {
     }
   }
 
+  /**
+   * 外来会话的统一收编规格（启动加载 / 导入共用，避免两份拷贝漂移）：
+   * 字段兜底 → 日志配平 → 活动目标停摆（浏览器重载后不可能有后台轮次）。
+   * 返回是否实际发生变更（调用方据此决定写审计与持久化）。
+   */
+  private sanitizeSession(s: SessionModel): boolean {
+    let changed = false
+    if (!s.usage) {
+      s.usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+      changed = true
+    }
+    if (!Array.isArray(s.todos)) {
+      s.todos = []
+      changed = true
+    }
+    const fixed = repairSessionIntegrity(s)
+    const wasActive = s.goal?.status === 'active'
+    if (wasActive) {
+      s.goal!.status = 'paused'
+      s.goal!.note = '页面重载，已自动暂停（点击继续可恢复推进）'
+      s.goal!.updatedAt = Date.now()
+    }
+    if (fixed > 0) this.recordOp(s, 'repair', undefined, `${fixed} dangling tool calls`)
+    if (wasActive) this.recordOp(s, 'goal', undefined, 'reload → paused')
+    return changed || fixed > 0 || wasActive
+  }
+
   private async loadSessions(): Promise<void> {
     const keys = await this.deps.kv.keys('session:')
     const sessions: SessionModel[] = []
@@ -309,22 +336,10 @@ export class HarnessRuntime {
     for (const k of keys) {
       const s = await this.deps.kv.get<SessionModel>(k)
       if (s && s.id && Array.isArray(s.messages)) {
-        // 启动时修复历史会话中的悬空 tool_calls（页面刷新/崩溃留下的不合法序列）
-        const fixed = repairSessionIntegrity(s)
-        // 浏览器现实：重载后不可能有后台轮次 → 活动目标诚实转为暂停
-        const wasActive = s.goal?.status === 'active'
-        if (wasActive) {
-          s.goal!.status = 'paused'
-          s.goal!.note = '页面重载，已自动暂停（点击继续可恢复推进）'
-          s.goal!.updatedAt = Date.now()
-        }
-        // 仅在实际发生变更时写审计与持久化 —— 否则每次启动都会给
-        // paused 会话追加 "0 dangling" 记录并重写 KV（审计污染 + 写放大）
-        if (fixed > 0 || wasActive) {
+        // 启动与导入共用的收编规格（见 sanitizeSession）；仅实际变更时持久化，
+        // 否则每次启动都会给 paused 会话追加记录并重写 KV（审计污染 + 写放大）
+        if (this.sanitizeSession(s)) {
           repaired = true
-          if (!s.ops) s.ops = []
-          if (fixed > 0) s.ops.push({ op: 'repair', ts: Date.now(), note: `${fixed} dangling tool calls` })
-          if (wasActive) s.ops.push({ op: 'goal', ts: Date.now(), note: 'reload → paused' })
           await this.deps.kv.set(k, s)
         }
         sessions.push(s)
@@ -1170,16 +1185,14 @@ export class HarnessRuntime {
       const parsed = JSON.parse(json)
       const s = parsed?.session ?? parsed
       if (!s?.id || !Array.isArray(s.messages)) return false
-      s.usage = s.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-      s.todos = Array.isArray(s.todos) ? s.todos : []
-      // 与启动加载同规格：导入源可能带悬空 tool_calls（导出方中断产生），先配平再入账
-      const fixed = repairSessionIntegrity(s)
-      if (fixed > 0) {
-        if (!s.ops) s.ops = []
-        s.ops.push({ op: 'repair', ts: Date.now(), note: `${fixed} dangling tool calls (import)` })
-      }
+      // 与启动加载同规格收编（字段兜底 + 配平 + 目标停摆），避免两份逻辑漂移
+      this.sanitizeSession(s)
       await this.deps.kv.set(K_SESSION(s.id), s)
-      this.sessions.unshift({ id: s.id, title: s.title || '导入会话', updatedAt: s.updatedAt || Date.now() })
+      // 同 id 重复导入 = 覆盖恢复语义：列表去重后置顶，不产生幽灵条目
+      const meta = { id: s.id, title: s.title || '导入会话', updatedAt: s.updatedAt || Date.now() }
+      const existing = this.sessions.findIndex((m) => m.id === s.id)
+      if (existing >= 0) this.sessions.splice(existing, 1)
+      this.sessions.unshift(meta)
       this.session = s
       this.notify()
       return true
@@ -1188,15 +1201,13 @@ export class HarnessRuntime {
     }
   }
 
-  /** 导出整个虚拟工作区（base64 JSON bundle） */
+  /** 导出整个虚拟工作区（base64 JSON bundle；读盘并行，多文件不串行卡顿） */
   async exportWorkspace(): Promise<string> {
-    const entries = await this.deps.fs.listAll()
-    const files: Record<string, string> = {}
-    for (const e of entries) {
-      if (e.kind !== 'file') continue
-      files[e.path] = bytesToB64(await this.deps.fs.readBytes(e.path))
-    }
-    return JSON.stringify({ kind: 'tim-harness-workspace', version: 1, files }, null, 2)
+    const entries = (await this.deps.fs.listAll()).filter((e) => e.kind === 'file')
+    const pairs = await Promise.all(
+      entries.map(async (e) => [e.path, bytesToB64(await this.deps.fs.readBytes(e.path))] as const),
+    )
+    return JSON.stringify({ kind: 'tim-harness-workspace', version: 1, files: Object.fromEntries(pairs) }, null, 2)
   }
 
   async importWorkspaceFiles(files: { path: string; content: string | Uint8Array }[]): Promise<number> {

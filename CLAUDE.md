@@ -20,7 +20,7 @@ JS 沙箱，全部运行在浏览器里，无后端。详见 [README](README.md)
 ```bash
 npm run dev          # 开发服务器 http://localhost:5188
 npm run typecheck    # strict 全仓类型检查（提交门禁）
-npm run smoke        # core 冒烟（155 项断言，纯 Node 可移植性保障）
+npm run smoke        # core 冒烟（157 项断言，纯 Node 可移植性保障）
 npm run smoke:wechat # 微信小程序 PoC 冒烟（wx 适配器）
 npm run build        # 生产构建 dist/
 node scripts/e2e-check.mjs  # 真实浏览器端到端（需 dev server）
@@ -44,7 +44,7 @@ src/ui/       React 界面，只做展示与交互；Three.js/Canvas 渲染器�
 ## 修改守则
 
 - 改 core → 必须过 `smoke`；新增行为 → 先在 `scripts/smoke.ts` 写断言（TDD，
-  现有 155 项是该文件的惯例样板）。
+  现有 157 项是该文件的惯例样板）。
 - UI 渲染器（Battlefield/Pipeline/Cosmos 等）：创建的 geometry/material 必须
   在重建/销毁路径 `dispose()`；事件监听必须在 `destroy()` 解绑。
 - 消息序列合法性：`assistant.tool_calls` 与 `tool` 结果必须配平且相邻

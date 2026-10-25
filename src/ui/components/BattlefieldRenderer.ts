@@ -127,6 +127,8 @@ export class BattlefieldRenderer {
     cancelAnimationFrame(this.animId)
     this.unbindEvents()
     this.clearBuildings()
+    // 释放静态场景资源（地面/网格/标记/粒子等 setupScene 一次性几何与材质）
+    disposeObject3D(this.scene)
     this.renderer.dispose()
   }
 

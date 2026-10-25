@@ -18,8 +18,10 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { kitScript } from "/Users/hongxin/.claude/skills/anatomy/scripts/inline-kit.mjs";
-import * as k from "/Users/hongxin/.claude/skills/anatomy/kit/iso-kit.mjs";
+import { homedir } from "node:os";
+const SKILL = join(homedir(), ".claude/skills/anatomy");
+const { kitScript } = await import(join(SKILL, "scripts/inline-kit.mjs"));
+const k = await import(join(SKILL, "kit/iso-kit.mjs"));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const theme = process.argv.includes("--light") ? "light" : "dark";

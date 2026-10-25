@@ -133,6 +133,15 @@ const FINAL = () => [
   sse({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }),
 ]
 
+/** 轮询等待条件成立（模块级共享，避免多处拷贝漂移） */
+async function waitCond(fn: () => boolean, ms = 4_000): Promise<void> {
+  const t0 = Date.now()
+  while (!fn()) {
+    if (Date.now() - t0 > ms) throw new Error('waitCond 超时')
+    await new Promise((r) => setTimeout(r, 20))
+  }
+}
+
 /* ---------------- 1. SSE 解析器单元测试 ---------------- */
 
 {
@@ -483,13 +492,6 @@ const FINAL = () => [
 /* ---------------- 9. 审批缝（拒绝 → 允许 → 会话记忆） ---------------- */
 
 {
-  async function waitCond(fn: () => boolean, ms = 4_000): Promise<void> {
-    const t0 = Date.now()
-    while (!fn()) {
-      if (Date.now() - t0 > ms) throw new Error('waitCond 超时')
-      await new Promise((r) => setTimeout(r, 20))
-    }
-  }
   const kv = new MapKV()
   const fs = new TestFS()
   const wf = (id: string) => [
@@ -1188,13 +1190,6 @@ const FINAL = () => [
 /* ---------------- 19. ask_user 回答落档顺序（协议合法性） ---------------- */
 
 {
-  async function waitCond19(fn: () => boolean, ms = 4_000): Promise<void> {
-    const t0 = Date.now()
-    while (!fn()) {
-      if (Date.now() - t0 > ms) throw new Error('waitCond 超时')
-      await new Promise((r) => setTimeout(r, 20))
-    }
-  }
   const t19 = new ScriptedTransport([
     [
       toolCallChunk('call_q', 'ask_user', '{"question":"用哪种配色？"}', true),
@@ -1212,7 +1207,7 @@ const FINAL = () => [
     activeProviderId: 'mock', proxyTemplate: '', webSearch: null,
   })
   const turn19 = rt19.send('问我配色')
-  await waitCond19(() => rt19.getSnapshot().ask !== null)
+  await waitCond(() => rt19.getSnapshot().ask !== null)
   rt19.answerAsk(rt19.getSnapshot().ask!.id, '深蓝')
   await turn19
   const msgs19 = rt19.getSnapshot().session!.messages
@@ -1225,18 +1220,21 @@ const FINAL = () => [
   assert(!!toolMsg19 && toolMsg19.content!.includes('[用户回答] 深蓝'), 'ask_user：回答进入工具结果（模型当轮可见）')
   const noteIdx = msgs19.findIndex((m) => m.role === 'user' && (m.content ?? '').includes('[回答 ask_user'))
   assert(noteIdx > askIdx + 1, 'ask_user：回答留档于 tool 批次之后（不被视图折叠吞噬）')
-  // 发往 API 的请求体同样满足配平
+  // 发往 API 的请求体同样满足配平：tool_calls 的结果必须紧随其后（前向查找，不允许兜底通过）
+  let checked19 = 0
   for (const body of t19.requests) {
     const reqMsgs = JSON.parse(body).messages
     reqMsgs.forEach((m: any, i: number) => {
       if (m.role === 'assistant' && m.tool_calls?.length) {
-        if (!m.tool_calls.every((tc: any) => reqMsgs[i + 1]?.role === 'tool' || reqMsgs.slice(0, i).some((x: any) => x.role === 'tool' && x.tool_call_id === tc.id))) {
-          assert(reqMsgs[i + 1]?.role === 'tool', 'ask_user：请求体中 tool 结果紧跟 tool_calls')
-        }
+        checked19++
+        const nextIsTool = reqMsgs[i + 1]?.role === 'tool'
+        const allAnsweredAfter = m.tool_calls.every((tc: any) =>
+          reqMsgs.slice(i + 1).some((x: any) => x.role === 'tool' && x.tool_call_id === tc.id))
+        assert(nextIsTool && allAnsweredAfter, `ask_user：请求体第 ${i} 条 tool_calls 的结果紧随其后（协议配平）`)
       }
     })
   }
-  assert(true, 'ask_user：全部请求体满足 API 配平约束')
+  assert(checked19 > 0, 'ask_user：请求体校验确有覆盖（非空转）')
 }
 
 /* ---------------- 20. 导入会话配平（悬空 tool_calls 修复） ---------------- */
@@ -1271,6 +1269,12 @@ const FINAL = () => [
     '导入：悬空 tool_calls 已自动配平（可直接继续对话）',
   )
   assert(imp.ops?.some((o: any) => o.op === 'repair'), '导入：修复写入操作审计')
+
+  // 重复导入同一会话：侧栏不得出现两条同 id 记录（幽灵条目）
+  const dup = await rt20.importSession(JSON.stringify({ kind: 'tim-harness-session', version: 1, session: danglingImport }))
+  assert(dup, '导入：第二次导入接受（覆盖恢复语义）')
+  const list20 = rt20.getSnapshot().sessions.filter((s) => s.id === 's_import_x')
+  assert(list20.length === 1, `导入：重复导入同 id 去重（列表 ${list20.length} 条）`)
 
   // 导出格式锁定（重构 exportWorkspace 编码实现时的行为基线）
   const rt20fs = (rt20 as any).deps.fs as TestFS
