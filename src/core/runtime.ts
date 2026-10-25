@@ -112,8 +112,8 @@ export interface RuntimeSnapshot {
 export const DEFAULT_PROVIDERS: ProviderSetting[] = [
   // DeepSeek-V4.1-Flash（1017 版），官方当前建议的默认模型；API model id: deepseek-flash
   { id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-flash' },
-  { id: 'gemini', name: 'Google Gemini（免费）', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-2.0-flash' },
-  { id: 'openrouter', name: 'OpenRouter（免费模型）', baseURL: 'https://openrouter.ai/api/v1', apiKey: '', model: 'liquid/lfm-2.5-2.6b:free' },
+  { id: 'gemini', name: 'Google Gemini（免费）', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-2.5-flash' },
+  { id: 'openrouter', name: 'OpenRouter（免费模型）', baseURL: 'https://openrouter.ai/api/v1', apiKey: '', model: 'google/gemma-4-26b-a4b-it:free' },
   { id: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' },
   { id: 'ollama', name: 'Ollama 本地', baseURL: 'http://localhost:11434/v1', apiKey: '', model: 'qwen2.5:7b' },
 ]
@@ -123,10 +123,11 @@ const MODEL_LABELS: Record<string, string> = {
   'deepseek-flash': 'DeepSeek V4.1 Flash',
   'deepseek-chat': 'DeepSeek Chat',
   'deepseek-reasoner': 'DeepSeek Reasoner',
-  'gemini-2.0-flash': 'Gemini 2.0 Flash（免费）',
-  'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite（免费）',
-  'gemini-1.5-flash': 'Gemini 1.5 Flash（免费）',
-  'liquid/lfm-2.5-2.6b:free': 'Liquid LFM 2.5（免费）',
+  'gemini-2.5-flash': 'Gemini 2.5 Flash（免费）',
+  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite（免费）',
+  'gemini-2.5-pro': 'Gemini 2.5 Pro（免费）',
+  'google/gemma-4-26b-a4b-it:free': 'Gemma 4 26B（免费·OpenRouter）',
+  'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nemotron 3 Ultra 550B（免费·OpenRouter）',
 }
 
 export function modelLabel(model: string): string {
