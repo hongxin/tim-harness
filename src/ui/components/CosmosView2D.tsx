@@ -5,7 +5,8 @@ import type { RuntimeSnapshot, HarnessRuntime } from '../../core/runtime'
 import { CosmosCanvas, mapSession, type CosmosNode } from './CosmosCanvas2D'
 
 export function CosmosView({
-  const { t } = useTranslation() snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const engineRef = useRef<CosmosCanvas | null>(null)
   const [selected, setSelected] = useState<CosmosNode | null>(null)

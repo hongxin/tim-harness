@@ -5,7 +5,8 @@ import type { RuntimeSnapshot, HarnessRuntime } from '../../core/runtime'
 import { PipelineRenderer, parseTurns } from './PipelineRenderer'
 
 export function MachineView({
-  const { t } = useTranslation() snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<PipelineRenderer | null>(null)
 

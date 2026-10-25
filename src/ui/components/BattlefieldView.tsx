@@ -5,7 +5,8 @@ import type { RuntimeSnapshot, HarnessRuntime } from '../../core/runtime'
 import { BattlefieldRenderer, parseBattlefieldData } from './BattlefieldRenderer'
 
 export function BattlefieldView({
-  const { t } = useTranslation() snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<BattlefieldRenderer | null>(null)
 
