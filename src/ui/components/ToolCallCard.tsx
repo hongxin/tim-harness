@@ -1,4 +1,5 @@
 /** 工具调用卡片：状态、参数摘要、可展开详情（成功默认折叠、失败自动展开） */
+import { useTranslation } from '../../i18n/useTranslation'
 import { useState } from 'react'
 import type { ChatMessage } from '../../core/types'
 
@@ -42,7 +43,7 @@ function argSummary(name: string, argsRaw?: string): string {
     const code = typeof args.code === 'string' ? args.code : ''
     return `${code.split('\n').length} 行 JS`
   }
-  if (name === 'spawn_agent') return pick('description') ?? '子任务'
+  if (name === 'spawn_agent') return pick('description') ?? t('tool.subtask')
   const keys = Object.keys(args)
   return keys.length ? `${keys[0]}: ${String(args[keys[0]]).slice(0, 40)}` : ''
 }
@@ -50,10 +51,11 @@ function argSummary(name: string, argsRaw?: string): string {
 function renderOut(content?: string | null): string {
   const c = content ?? ''
   if (c.length <= BODY_CAP) return c
-  return c.slice(0, BODY_CAP) + `\n…[预览截断：共 ${c.length.toLocaleString()} 字符，完整内容见会话记录]`
+  return c.slice(0, BODY_CAP) + `\n…[${t('tool.truncated', { total: c.length.toLocaleString() })}]`
 }
 
 export function ToolCallCard({ msg }: { msg: ChatMessage }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(msg.toolOk === false) // 静默成功、喧哗失败
   const ok = msg.toolOk
   const dur = msg.durationMs != null ? (msg.durationMs < 1000 ? `${msg.durationMs}ms` : `${(msg.durationMs / 1000).toFixed(1)}s`) : ''
@@ -80,7 +82,7 @@ export function ToolCallCard({ msg }: { msg: ChatMessage }) {
         <div className="toolcard-body">
           {prettyArgs && (
             <details className="toolcard-args" open={false}>
-              <summary>参数</summary>
+              <summary>{t('tool.params')}</summary>
               <pre>{prettyArgs}</pre>
             </details>
           )}
