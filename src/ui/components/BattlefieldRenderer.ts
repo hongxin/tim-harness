@@ -115,11 +115,14 @@ export class BattlefieldRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+    // 关键：适配高 DPI 屏幕（Retina = 2x），否则画布分辨率是 CSS 像素的一半 → 模糊
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500)
 
     this.setupScene()
     this.bindEvents()
+    this.onResize() // 立即设置正确分辨率
     this.loop()
   }
 
@@ -706,7 +709,7 @@ export class BattlefieldRenderer {
     const parent = this.canvas.parentElement
     if (!parent) return
     const w = parent.clientWidth, h = parent.clientHeight
-    this.renderer.setSize(w, h, false)
+    this.renderer.setSize(w, h) // true = 同时更新 canvas CSS 尺寸，防止拉伸模糊
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
   }
