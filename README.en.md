@@ -10,23 +10,11 @@
 > 🌐 **[Live demo — open and start, zero install](https://hongxin.github.io/tim-harness/)** — bring your own
 > OpenAI-compatible API key (DeepSeek / OpenAI / local Ollama). Your key never leaves your browser.
 
-Open the page → enter an API key once → you get: an agent with multi-turn tool calling, a persistent
-virtual workspace, a JavaScript code sandbox, sub-agent delegation, and a live task list — all running
-inside your browser. No backend, no installation.
+Open the page → enter an API key once → you get a complete AI coding assistant:
+multi-turn tool calling, a virtual file system, a code sandbox, sub-agent delegation —
+all running inside your browser. No backend, no installation.
 
-```
-┌──────────────────────── Your Browser ────────────────────────┐
-│                                                              │
-│   React UI ◀── HarnessRuntime ◀── Agent Loop (platform-      │
-│      │              │                 agnostic core)         │
-│   IndexedDB      OPFS virtual FS     Web Worker sandbox      │
-│   (sessions/     (workspace files)   (run_js execution)      │
-│    settings)                   │                             │
-└────────────────────────────────┼──────────────────────────────┘
-                                 │ fetch (SSE streaming)
-                                 ▼
-                   DeepSeek / OpenAI / Ollama / any OpenAI-compatible endpoint
-```
+![Tim Harness Architecture](docs/diagram/architect.jpg)
 
 ## Quick Start
 
@@ -36,99 +24,78 @@ npm install
 npm run dev        # http://localhost:5188
 ```
 
-1. Open the page, click "Settings" (bottom of the sidebar)
-2. Pick a provider (DeepSeek / OpenAI / local Ollama are preconfigured) and enter your API key
-3. Give the agent any task, for example:
+1. Open the page → click "Settings" → pick a provider → enter your API key
+2. Give the agent any task, for example:
    > Use run_js to compute the first 20 Fibonacci numbers, write them to fib.md, then read it back to confirm.
 
-**Local Ollama (fully offline):** run `OLLAMA_ORIGINS=* ollama serve`, choose the "Ollama 本地" provider — no key needed.
+**Local Ollama (fully offline):** run `OLLAMA_ORIGINS=* ollama serve`, choose the "Ollama" provider — no key needed.
 
-## What It Can Do
+## Core Features
+
+**🔥 Extreme Token Economy** — Five cost defense layers: tool output slimming → prefix caching (DeepSeek cache-hit price is **1/50** of cache-miss, measured **84-90% input cost savings**) → view folding → incremental compression → one-click cost tiers. [→ Details](docs/04-context-economy-research.md)
+
+**🎯 Goal-Driven Autopilot** — Set a goal and the agent autonomously executes in continuous rounds (full harness loop each round), self-reporting complete/blocked; supports pause/resume and round limits.
+
+**⚡ Zero Install, Zero Backend** — Open a web page and start. OPFS persistent workspace, IndexedDB session storage, Web Worker code sandbox — your key never leaves your browser.
+
+**📦 Complete Toolchain** — 18 tools: file read/write/edit/search, JS sandbox, web fetch/search, sub-agent spawning, task planning, skill system, workspace snapshots (lightweight git). [→ Full list](docs/features.md)
+
+**🌌 Multi-Modal Visualization** — Four real-time switchable views: 💬 Chat / 🌌 Cosmos star map (3D force-directed) / 🏭 Assembly line (orthogonal routing + 3-level progressive disclosure) / ⚔️ Battlefield mode (Three.js RTS-style unit production). [→ Visualization design](docs/08-cosmos-design-principles.md)
+
+<details>
+<summary><b>📋 More Capabilities</b> (click to expand)</summary>
 
 | Capability | Details |
 |---|---|
-| Multi-turn tool calling | 18 tools: the file suite + `run_js / web_fetch / web_search / todo_write / spawn_agent / ask_user / skill / goal_update / snapshot_save·restore·list·diff` |
-| Goal-driven mode 🎯 | Set an objective and the agent auto-continues rounds (full harness loop each round) until it reports complete/blocked; round caps, pause/resume anytime |
-| Model routing | Sub-agents can run on a cheaper provider (Settings → Models) while the main session keeps the strong model |
-| Workspace snapshots | Lightweight git: save / restore / list / diff, with automatic protective snapshots — every restore is reversible |
-| Skills | `/skills/<name>/SKILL.md` auto-indexed into the system prompt; loaded on demand via the `skill` tool — the agent can even author new skills itself |
-| Rich rendering | GFM tables (with column alignment), task lists, strikethrough, nested lists, copyable code blocks; LaTeX math (`$..$`/`$$..$$`, Unicode fallback + precise KaTeX rendering) |
-| Virtual workspace | OPFS-persistent file system (survives reloads), with import / export / download |
-| Code sandbox | Isolated Web Worker execution with console capture; infinite loops terminated in ~1.5s |
-| Live HTML preview | Sandboxed iframe + console capture with level filters; auto-refreshes when the agent writes. Big view adds device width presets (375/768/1280), open-in-new-tab, Esc to close |
-| Resizable workspace | Drag the panel's left edge to widen it (280–720px, remembered) — handy for watching pages as they are being generated |
-| Context management | Three-layer budget strategy: old tool outputs auto-folded (last 4 kept full, ls/grep/glob "project map" exempt); live context gauge above the input; long sessions never overflow |
-| Compaction ⚡ | The LLM summarizes early messages once; afterwards every turn sends only "summary + recent tail" — tokens are billed on the tail, not the whole history. Manual button + automatic at 80% watermark; the full transcript is never touched |
-| Tool approval (optional) | When enabled in settings, write operations require a human approval (once per session) |
-| Edit & fork | Hover any user message: ✎ edit-and-resend (truncates history), ⑃ fork a new session from that point; full operation audit trail in exports |
-| Dual-channel prompt | Stable system section is byte-identical across turns (provider prefix-cache hits, lower cost); volatile facts arrive as a "supersedes" snapshot at the end |
-| Token economy | Five cost defenses: slim tool outputs (offset/limit paging) → prefix caching (live hit-rate gauge) → view folding → **incremental compaction** (second pass costs only the delta) → cost tiers (eco/standard/full, one switch) |
-| Drag & drop | Drop files anywhere to import them into the workspace; tool cards "quiet on success, loud on failure" |
-| Cosmos 3D 🌌 | Agent galaxy: messages spiral in 3D (user=gold octahedron, assistant=cyan icosahedron, tools=colored cubes), context budget ring, guided tour with step controls, focus dimming, auto-rotate |
-| WeChat PoC 🧪 | Four wx adapters prove the core ports over unmodified (chunked SSE / Storage / FileSystemManager / honest sandbox degradation) — [see docs](docs/05-wechat-poc.md) |
-| Sub-agents | `spawn_agent` runs self-contained tasks in a fresh context to conserve the main conversation |
-| Task list | The agent maintains its plan with `todo_write`, projected live in the side panel |
-| Streaming | Content / reasoning / tool calls all stream in real time; stop at any moment |
-| Sessions | Multiple sessions, rename, delete, JSON import/export |
-| Themes | Dark / light / follow system |
+| Multi-model routing | Sub-agents can use cheaper models while main session stays on a strong one |
+| Skill system | `/skills/<name>/SKILL.md` auto-indexed; agents can create their own skills |
+| Context compression | Auto-triggers at 80% capacity via LLM summarization; full log preserved |
+| Tool approval | Optional; write operations require human approval |
+| Session editing & forking | Edit-resend (truncate & replay), fork from any message |
+| Rich rendering | GFM tables, task lists, LaTeX formulas, code block copy |
+| HTML live preview | Sandboxed iframe + console capture, device size presets |
+| WeChat Mini Program PoC | wx adapter validates zero-change core portability |
 
-## Architecture at a Glance
+</details>
+
+## Architecture
 
 ```
 src/
-├── core/            # Platform-agnostic core (hard rule: no browser API imports)
-│   ├── runtime.ts   #   HarnessRuntime: composition + session management + state machine
-│   ├── agent/       #   loop.ts (Agent Loop) · prompts.ts (system prompt)
-│   ├── llm/         #   client.ts (OpenAI-compatible streaming) · sse.ts (SSE parser)
-│   ├── tools/       #   12 tools + registry (factory wiring)
-│   ├── session/     #   session model · persistence
-│   ├── ports.ts     #   The four ports: Transport / KVStore / VFileSystem / CodeSandbox
-│   └── types.ts
-├── platform/        # Browser adapters
-│   ├── browser.ts   #   Composition root
-│   ├── kv-idb.ts    #   IndexedDB KV
-│   ├── fs-opfs.ts   #   OPFS virtual FS (with in-memory fallback)
-│   ├── transport-fetch.ts  # fetch + streaming body
-│   ├── sandbox-worker.ts   # Worker sandbox
-│   └── worker/runner.ts    # Sandbox internals (console capture / structured returns)
-└── ui/              # React interface (presentation only, never touches core logic)
+├── core/            # Platform-agnostic core (rule: no browser API imports)
+│   ├── runtime.ts   #   HarnessRuntime: assembly + session management + state machine
+│   ├── agent/       #   loop.ts · prompts.ts · context.ts
+│   ├── llm/         #   OpenAI-compatible streaming client + SSE parsing
+│   ├── tools/       #   18 tools + registry
+│   ├── session/     #   Session model · repair · persistence
+│   └── token-economy.ts  # Three-tier cost policy
+├── platform/        # Browser adapters (IndexedDB / OPFS / Worker / fetch)
+└── ui/              # React interface + visualization renderers
 ```
 
-**Why a platform-agnostic core?** The long-term goal is a WeChat Mini Program edition
-(`wx.request` / wx storage / `wx.getFileSystemManager` adapters). Core portability is
-continuously verified by `npm run smoke`: the complete agent loop runs in plain Node with
-mock adapters (30+ assertions).
+**Portability**: the core passes 157 assertions in pure Node with mock adapters (`npm run smoke`),
+targeting WeChat Mini Program deployment.
 
 ## Development
 
 ```bash
-npm run dev         # Dev server at http://localhost:5188
-npm run build       # Production build (dist/)
-npm run typecheck   # Strict typecheck for the whole repo
-npm run smoke       # Core smoke test in Node (portability guarantee)
-npm run smoke:wechat        # WeChat mini-program PoC smoke (wx adapters + mock env)
-node scripts/e2e-check.mjs   # Real-browser end-to-end checks (needs dev server + playwright)
+npm run dev         # http://localhost:5188
+npm run build       # production build
+npm run typecheck   # strict type check
+npm run smoke       # core smoke test (157 assertions)
+npm run smoke:wechat # WeChat PoC smoke
 ```
 
-## Research & Design Notes
+## Security
 
-- [docs/00-design.md](docs/00-design.md) — Design doc: problem definition, hexagonal architecture,
-  DSH/JetBot idea-inheritance table, evolution roadmap (in Chinese)
-- [docs/01-dsh-architecture-study.md](docs/01-dsh-architecture-study.md) — DeepSeek Harness core
-  architecture study (305-package dissection, in Chinese)
-- [docs/02-jetbot-study.md](docs/02-jetbot-study.md) — JetBot pure-browser AI assistant study (in Chinese)
-
-## Security Notes (please read)
-
-- API keys are stored only in your browser's IndexedDB and are sent to no one except your chosen
-  provider. Do not save keys on shared devices.
-- Sessions and files live only in your browser; "clear site data" wipes them. Use the export
-  feature to back up anything important.
-- `run_js` is a compute sandbox (no DOM, dedicated thread, timeout kill) — not a network-isolation sandbox.
-- `web_fetch` is subject to browser CORS; a proxy template can be configured (Settings → Network).
+- API keys are stored only in your browser's IndexedDB, never sent to anyone except your chosen provider
+- `run_js` is a compute sandbox (no DOM, separate thread, timeout termination, same-origin storage APIs blocked)
+- "Clear browser data" will erase everything — use the export feature to back up important content
 
 ## Roadmap
 
-v0.1 (current) → v0.2 event-sourced sessions & compaction / tool approval / skills
-→ v0.3 multi-model routing / goal-round driving → **v1.0 WeChat Mini Program edition**
-(core ported as-is + wx adapters).
+v0.4 (current) → v0.5 multi-view polish → **v1.0 WeChat Mini Program**
+
+---
+
+📚 **[Full documentation](docs/README.md)** · 🔬 [Architecture study](docs/01-dsh-architecture-study.md) · 💰 [Token economy](docs/04-context-economy-research.md) · 🎨 [Visualization design](docs/08-cosmos-design-principles.md)
