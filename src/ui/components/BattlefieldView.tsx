@@ -1,9 +1,11 @@
 /** BattlefieldView —— ⚔️ 战场视图（红警暴兵模式） */
+import { useTranslation } from '../../i18n/useTranslation'
 import { useEffect, useRef } from 'react'
 import type { RuntimeSnapshot, HarnessRuntime } from '../../core/runtime'
 import { BattlefieldRenderer, parseBattlefieldData } from './BattlefieldRenderer'
 
-export function BattlefieldView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+export function BattlefieldView({
+  const { t } = useTranslation() snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<BattlefieldRenderer | null>(null)
 
@@ -30,7 +32,7 @@ export function BattlefieldView({ snapshot, runtime }: { snapshot: RuntimeSnapsh
     <div className="cosmos-view">
       <canvas ref={canvasRef} className="cosmos-canvas2d" />
       <div className="cosmos-hud">
-        <span className="cosmos-stat">⚔️ 战场模式</span>
+        <span className="cosmos-stat">{t('view.battlefield')}</span>
         <span className="cosmos-stat">{snapshot.session?.messages.length ?? 0} 消息</span>
         <span className="cosmos-stat">{(snapshot.session?.usage.total_tokens ?? 0).toLocaleString()} tokens</span>
       </div>

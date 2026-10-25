@@ -1,9 +1,11 @@
 /** Cosmos 2D 视图：JetBot 风格冒泡 */
+import { useTranslation } from '../../i18n/useTranslation'
 import { useEffect, useRef, useState } from 'react'
 import type { RuntimeSnapshot, HarnessRuntime } from '../../core/runtime'
 import { CosmosCanvas, mapSession, type CosmosNode } from './CosmosCanvas2D'
 
-export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+export function CosmosView({
+  const { t } = useTranslation() snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const engineRef = useRef<CosmosCanvas | null>(null)
   const [selected, setSelected] = useState<CosmosNode | null>(null)
@@ -27,7 +29,7 @@ export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; r
     <div className="cosmos-view">
       <canvas ref={canvasRef} className="cosmos-canvas2d" />
       <div className="cosmos-hud">
-        <span className="cosmos-stat">🌌 星图</span>
+        <span className="cosmos-stat">{t('view.cosmos')}</span>
         <span className="cosmos-stat">{snapshot.session?.messages.length ?? 0} 消息</span>
       </div>
       {selected && (

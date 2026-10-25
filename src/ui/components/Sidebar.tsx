@@ -1,10 +1,12 @@
 /** 左侧栏：品牌、会话列表、入口 */
+import { useTranslation } from '../../i18n/useTranslation'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
 import { relTime } from '../fileops'
 import { GitHubMark, REPO_URL } from './GitHubMark'
 
 export function Sidebar({
+  const { t } = useTranslation()
   snapshot,
   runtime,
   onOpenSettings,
@@ -29,12 +31,12 @@ export function Sidebar({
         </div>
         <div className="brand-text">
           <div className="brand-name">TIM HARNESS</div>
-          <div className="brand-sub">浏览器里的大模型工程台</div>
+          <div className="brand-sub">{t('sidebar.tagline')}</div>
         </div>
       </div>
 
       <button type="button" className="btn-new-session" onClick={() => runtime.createSession()} disabled={snapshot.status === 'running'}>
-        + 新会话
+        + {t('sidebar.newSession')}
       </button>
 
       <div className="session-list">
@@ -50,10 +52,10 @@ export function Sidebar({
               <button
                 type="button"
                 className="session-del"
-                title="删除会话"
+                title="t('sidebar.deleteSession')"
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (confirm(`删除会话「${s.title}」？此操作不可撤销。`)) void runtime.deleteSession(s.id)
+                  if (confirm(`t('sidebar.deleteSession')「${s.title}」？此操作不可撤销。`)) void runtime.deleteSession(s.id)
                 }}
               >
                 ×
@@ -64,10 +66,10 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <a className="btn-ghost btn-footer gh-footer" href={REPO_URL} target="_blank" rel="noreferrer" title="源码仓库 · 欢迎 Star">
+        <a className="btn-ghost btn-footer gh-footer" href={REPO_URL} target="_blank" rel="noreferrer" title="{t('sidebar.sourceRepo')}">
           <GitHubMark size={13} />
         </a>
-        <button type="button" className="btn-ghost btn-footer" onClick={onToggleTheme} title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}>
+        <button type="button" className="btn-ghost btn-footer" onClick={onToggleTheme} title={theme === 'dark' ? 't('sidebar.lightTheme')' : 't('sidebar.darkTheme')'}>
           {theme === 'dark' ? '☀' : '☾'}
         </button>
         <button type="button" className="btn-ghost btn-footer" onClick={onOpenSettings}>
