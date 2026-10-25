@@ -60,7 +60,7 @@ export function TopBar({
         <button
           type="button"
           className={`btn-icon ${viewMode !== 'chat' ? 'on' : ''}`}
-          title={viewMode === 'chat' ? '智能体可视化：🌌 星图视图' : viewMode === 'cosmos' ? '智能体可视化：🏭 装配线视图（Anatomy 风格）' : '返回对话视图'}
+          title={viewMode === 'chat' ? '智能体可视化：🌌 星图视图' : viewMode === 'cosmos' ? '智能体可视化：🏭 装配线视图' : viewMode === 'machine' ? '智能体可视化：⚔️ 战场模式' : '返回对话视图'}
           onClick={onToggleView}
         >
           {viewMode === 'chat' ? '🌌' : viewMode === 'cosmos' ? '🏭' : viewMode === 'machine' ? '⚔️' : '💬'}
