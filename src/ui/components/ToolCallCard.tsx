@@ -44,7 +44,7 @@ function argSummary(name: string, argsRaw?: string): string {
     const code = typeof args.code === 'string' ? args.code : ''
     return `${code.split('\n').length} 行 JS`
   }
-  if (name === 'spawn_agent') return pick('description') ?? t('tool.subtask')
+  if (name === 'spawn_agent') return pick('description') ?? tt('tool.subtask')
   const keys = Object.keys(args)
   return keys.length ? `${keys[0]}: ${String(args[keys[0]]).slice(0, 40)}` : ''
 }
@@ -52,7 +52,7 @@ function argSummary(name: string, argsRaw?: string): string {
 function renderOut(content?: string | null): string {
   const c = content ?? ''
   if (c.length <= BODY_CAP) return c
-  return c.slice(0, BODY_CAP) + `\n…[${t('tool.truncated', { total: c.length.toLocaleString() })}]`
+  return c.slice(0, BODY_CAP) + `\n…[${tt('tool.truncated', { total: c.length.toLocaleString() })}]`
 }
 
 export function ToolCallCard({ msg }: { msg: ChatMessage }) {
