@@ -1,6 +1,6 @@
 /** 输入区：自动增高、Enter 发送、运行中变为停止（仍可预输入下一条） */
 import { useTranslation } from '../../i18n/useTranslation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
@@ -17,6 +17,24 @@ export function Composer({
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
+  // ═══ 命令历史导航（Claude Code 风格：↑↓ 键选择历史输入）═══
+  const [historyIndex, setHistoryIndex] = useState(-1) // -1 = 不在历史浏览中
+  const [savedDraft, setSavedDraft] = useState('') // 进入历史时保存当前草稿
+  
+  // 从会话中提取用户消息作为历史（最新在前）
+  const inputHistory = useMemo(() => {
+    const msgs = snapshot.session?.messages ?? []
+    const seen = new Set<string>()
+    const history: string[] = []
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m.role === 'user' && m.content?.trim() && !seen.has(m.content)) {
+        seen.add(m.content)
+        history.push(m.content)
+      }
+    }
+    return history.slice(0, 50) // 最多 50 条
+  }, [snapshot.session?.messages])
 
   // 编辑用户消息 → 一次性预填
   useEffect(() => {
@@ -41,6 +59,8 @@ export function Composer({
     const value = text.trim()
     if (!value || running) return
     setText('')
+    setHistoryIndex(-1)
+    setSavedDraft('')
     requestAnimationFrame(autosize)
     void runtime.send(value)
   }
@@ -75,12 +95,57 @@ export function Composer({
           placeholder={running ? t('composer.placeholderRunning') : t('composer.placeholder')}
           onChange={(e) => {
             setText(e.target.value)
+            setHistoryIndex(-1) // 用户编辑 → 退出历史模式
             autosize()
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               submit()
+              return
+            }
+            // ═══ ↑ 历史上一条 ═══
+            if (e.key === 'ArrowUp') {
+              const ta = e.target as HTMLTextAreaElement
+              const atStart = ta.selectionStart === 0 && ta.selectionEnd === 0
+              // 仅当光标在开头 或 输入框为空时触发历史
+              if (atStart || text === '') {
+                const nextIdx = Math.min(historyIndex + 1, inputHistory.length - 1)
+                if (nextIdx >= 0 && inputHistory[nextIdx]) {
+                  e.preventDefault()
+                  if (historyIndex === -1) setSavedDraft(text) // 首次进入历史时保存草稿
+                  setHistoryIndex(nextIdx)
+                  setText(inputHistory[nextIdx])
+                  // 光标移到末尾
+                  requestAnimationFrame(() => {
+                    ta.setSelectionRange(ta.value.length, ta.value.length)
+                    autosize()
+                  })
+                }
+              }
+              return
+            }
+            // ═══ ↓ 历史下一条 / 返回草稿 ═══
+            if (e.key === 'ArrowDown') {
+              const ta = e.target as HTMLTextAreaElement
+              const atEnd = ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length
+              if (atEnd && historyIndex >= 0) {
+                e.preventDefault()
+                const nextIdx = historyIndex - 1
+                if (nextIdx >= 0) {
+                  setHistoryIndex(nextIdx)
+                  setText(inputHistory[nextIdx])
+                } else {
+                  // 退出历史浏览，恢复草稿
+                  setHistoryIndex(-1)
+                  setText(savedDraft)
+                }
+                requestAnimationFrame(() => {
+                  ta.setSelectionRange(ta.value.length, ta.value.length)
+                  autosize()
+                })
+              }
+              return
             }
           }}
         />
