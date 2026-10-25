@@ -176,6 +176,7 @@ export function AskUserCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot; 
 
 /** 审批卡片（JetBot Permission 桥）：写类工具执行前的用户批准 */
 export function ApprovalCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const approval = snapshot.approval
   if (!approval) return null
   return (
