@@ -357,7 +357,7 @@ export function RightPanel({
         })
       } catch {
         setPreviewPath(path)
-        setPreviewSrc(`<pre style="padding:12px;font-family:sans-serif">无法读取 ${path}</pre>`)
+        setPreviewSrc(`<pre style="padding:12px;font-family:sans-serif">Cannot read ${path}</pre>`)
       }
     },
     [runtime],
@@ -429,7 +429,7 @@ export function RightPanel({
     try {
       await runtime.uiDeleteEntry(node.path)
     } catch (e) {
-      alert(`删除失败：${e instanceof Error ? e.message : e}`)
+      alert(`Delete failed: ${e instanceof Error ? e.message : e}`)
     }
   }
   const downloadFile = async (path: string) => {
@@ -450,9 +450,9 @@ export function RightPanel({
     try {
       if (looksBinary(path)) return void (await downloadFile(path))
       const content = await runtime.fsAdapter.readFile(path)
-      setModal({ path, content: content.length > 300_000 ? content.slice(0, 300_000) + '\n…(预览截断)' : content })
+      setModal({ path, content: content.length > 300_000 ? content.slice(0, 300_000) + '\n…(Preview truncated)' : content })
     } catch (e) {
-      setModal({ path, content: `无法读取：${e instanceof Error ? e.message : e}` })
+      setModal({ path, content: `Cannot read: ${e instanceof Error ? e.message : e}` })
     }
   }
 
@@ -510,7 +510,7 @@ export function RightPanel({
         </button>
         <button type="button" className={`rp-tab ${tab === 'preview' ? 'on' : ''}`} onClick={() => setTab('preview')}>
           {t('panel.tab.preview')} {htmlFiles.length > 0 && <span className="rp-count">{htmlFiles.length}</span>}
-          {newHtml && tab !== 'preview' && <span className="rp-dot" title="本会话有新写入的 HTML" />}
+          {newHtml && tab !== 'preview' && <span className="rp-dot" title="New HTML written this session" />}
         </button>
         <button type="button" className={`rp-tab ${tab === 'todos' ? 'on' : ''}`} onClick={() => setTab('todos')}>
           {t('panel.tab.todos')} <span className="rp-count">{todos.length}</span>
@@ -535,14 +535,14 @@ export function RightPanel({
             </button>
             <span
               className={`fs-badge ${fsMode === 'opfs' ? 'fs-opfs' : 'fs-mem'}`}
-              title={fsMode === 'opfs' ? 'OPFS 持久化虚拟文件系统' : 'OPFS 不可用，已降级为 KV 持久化内存文件系统'}
+              title={fsMode === 'opfs' ? tt('panel.opfsNote') : tt('panel.kvNote')}
             >
-              {fsMode === 'opfs' ? 'OPFS' : '内存+KV'}
+              {fsMode === 'opfs' ? 'OPFS' : 'KV'}
             </span>
           </div>
           {snapshot.skills.length > 0 && (
             <div className="skills-strip" title={snapshot.skills.map((s) => `${s.name}：${s.description}`).join('\n')}>
-              <span className="skills-badge">⚙ 技能 {snapshot.skills.length}</span>
+              <span className="skills-badge">⚙ {tt('panel.tab.skills')} {snapshot.skills.length}</span>
               {snapshot.skills.slice(0, 3).map((s) => (
                 <span key={s.path} className="skill-chip" title={s.description}>
                   {s.name}
@@ -559,7 +559,7 @@ export function RightPanel({
                 className="btn-ghost btn-sm"
                 title="t('panel.saveSnapshot')"
                 onClick={() => {
-                  const label = prompt('快照名称：', `手动快照 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`)
+                  const label = prompt('Snapshot name:', `Manual snapshot ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`)
                   if (label !== null) void runtime.uiSaveSnapshot(label).then(() => refreshSnapshots())
                 }}
               >
@@ -573,15 +573,15 @@ export function RightPanel({
                 <div key={sn.id} className="snap-row" title={sn.label}>
                   <span className="snap-label">{sn.label}</span>
                   <span className="snap-meta">
-                    {Object.keys(sn.files).length} 文件 · {relTimeLite(sn.createdAt)}
+                    {Object.keys(sn.files).length} files · {relTimeLite(sn.createdAt)}
                   </span>
                   <span className="snap-actions">
                     <button
                       type="button"
                       className="ft-btn"
-                      title="恢复到此快照（当前状态将自动保护）"
+                      title="tt('panel.restoreHere')"
                       onClick={() => {
-                        if (confirm(`恢复到「${sn.label}」？当前工作区会先自动保存为保护快照。`)) {
+                        if (confirm(`Restore to '${sn.label}'? Current state will be auto-saved as protection snapshot.`)) {
                           void runtime.uiRestoreSnapshot(sn.id).then(() => refreshSnapshots())
                         }
                       }}
@@ -591,9 +591,9 @@ export function RightPanel({
                     <button
                       type="button"
                       className="ft-btn snap-del"
-                      title="删除此快照（不影响工作区文件）"
+                      title="tt('panel.deleteSnapshot')"
                       onClick={() => {
-                        if (confirm(`删除快照「${sn.label}」？此操作不可恢复（工作区文件不受影响）。`)) {
+                        if (confirm(`Delete snapshot '${sn.label}'? Cannot be recovered. Workspace files unaffected.`)) {
                           void runtime.uiDeleteSnapshot(sn.id).then(() => refreshSnapshots())
                         }
                       }}
@@ -603,7 +603,7 @@ export function RightPanel({
                     <button
                       type="button"
                       className="ft-btn"
-                      title="下载快照 JSON"
+                      title="tt('panel.downloadSnapshot')"
                       onClick={() =>
                         downloadText(`tim-snapshot-${sn.id}.json`, JSON.stringify({ kind: 'tim-harness-snapshot', ...sn }, null, 2), 'application/json')
                       }
@@ -621,7 +621,7 @@ export function RightPanel({
             <div className="rp-empty">
               {t('panel.emptyWorkspace')}
               <br />
-              让智能体「创建 index.html」试试，或点「导入」上传文件。
+              Ask the agent to create index.html, or import files.
             </div>
           ) : (
             <div className="file-tree">
@@ -651,7 +651,7 @@ export function RightPanel({
                   {previewPath.replace(/^\//, '')}
                 </span>
                 {fileSwitcher('preview-select')}
-                <button type="button" className="btn-ghost btn-sm" onClick={reloadPreview} title="重新加载">
+                <button type="button" className="btn-ghost btn-sm" onClick={reloadPreview} title="tt('panel.reload')">
                   ⟳
                 </button>
                 <button type="button" className="btn-ghost btn-sm" onClick={() => setBigView(true)} title="大窗预览（Esc 关闭）">
@@ -659,13 +659,13 @@ export function RightPanel({
                 </button>
               </>
             ) : (
-              <span className="preview-path">HTML 预览</span>
+              <span className="preview-path">HTML Preview</span>
             )}
           </div>
           {previewPath ? (
             bigView ? (
               <div className="preview-frame-wrap preview-paused">
-                <div className="pc-empty" style={{ padding: '24px 12px' }}>已在大窗预览中运行 · 关闭大窗后返回</div>
+                <div className="pc-empty" style={{ padding: '24px 12px' }}>Running in big preview · close to return</div>
               </div>
             ) : (
               <div className="preview-frame-wrap">
@@ -674,7 +674,7 @@ export function RightPanel({
                   className="preview-frame"
                   sandbox="allow-scripts allow-modals allow-forms allow-popups"
                   srcDoc={previewSrc}
-                  title="HTML 预览"
+                  title="HTML Preview"
                 />
               </div>
             )
@@ -691,7 +691,7 @@ export function RightPanel({
             <div className="rp-empty">
               {t('panel.noHtml')}
               <br />
-              让智能体「写一个 game.html 小游戏」，写完即可在这里预览运行效果。
+              Write a game.html to preview here.
             </div>
           )}
           {previewPath && !bigView && (
@@ -704,7 +704,7 @@ export function RightPanel({
             <div className="rp-empty">
               {t('panel.noTodosHint')}
               <br />
-              复杂任务中智能体会用 todo_write 维护清单，这里实时展示。
+              Agent uses todo_write for complex tasks, shown here in real-time.
             </div>
           ) : (
             <div className="todo-list">
@@ -755,7 +755,7 @@ export function RightPanel({
           <div className="pb-inner" onClick={(e) => e.stopPropagation()}>
             <div className="pb-head">
               <div className="pb-title">
-                <span className="pb-live-dot" title="实时预览运行中" />
+                <span className="pb-live-dot" title="Live preview" />
                 <span className="pb-path" title={previewPath}>
                   {previewPath.replace(/^\//, '')}
                 </span>
@@ -775,13 +775,13 @@ export function RightPanel({
                     </button>
                   ))}
                 </span>
-                <button type="button" className="btn-ghost btn-sm" onClick={reloadPreview} title="重新加载">
+                <button type="button" className="btn-ghost btn-sm" onClick={reloadPreview} title="tt('panel.reload')">
                   ⟳ 重载
                 </button>
-                <button type="button" className="btn-ghost btn-sm" onClick={openInNewTab} title="在新标签页打开（Blob URL）">
+                <button type="button" className="btn-ghost btn-sm" onClick={openInNewTab} title="tt('panel.newTab')（Blob URL）">
                   ↗ 新标签
                 </button>
-                <button type="button" className="btn-icon" onClick={() => setBigView(false)} title="关闭（Esc）">
+                <button type="button" className="btn-icon" onClick={() => setBigView(false)} title="Close (Esc)">
                   ×
                 </button>
               </div>
@@ -798,7 +798,7 @@ export function RightPanel({
                     className="pb-frame"
                     sandbox="allow-scripts allow-modals allow-forms allow-popups"
                     srcDoc={previewSrc}
-                    title="HTML 大窗预览"
+                    title="HTML Big Preview"
                   />
                 </div>
               </div>
@@ -807,9 +807,9 @@ export function RightPanel({
               </div>
             </div>
             <div className="pb-status">
-              <span>沙箱运行：allow-scripts · opaque origin（无法触碰本站存储与密钥）</span>
+              <span>Sandboxed: allow-scripts · opaque origin (cannot access site storage/keys)</span>
               <span>
-                {refreshedAt ? `最近刷新 ${new Date(refreshedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '未刷新'} · Esc 关闭
+                {refreshedAt ? `Last refresh ${new Date(refreshedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '未刷新'} · Esc 关闭
               </span>
             </div>
           </div>

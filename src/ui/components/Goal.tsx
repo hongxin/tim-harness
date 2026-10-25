@@ -24,17 +24,17 @@ export function GoalBar({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runt
       <span className="goal-actions">
         {goal.status === 'active' && (
           <button type="button" className="btn-ghost btn-sm" onClick={() => runtime.pauseGoal()}>
-            ⏸ 暂停
+            ⏸ {t('goal.pause')}
           </button>
         )}
         {goal.status === 'paused' && (
           <button type="button" className="btn-ghost btn-sm" onClick={() => runtime.resumeGoal()}>
-            ▶ 继续
+            ▶ {t('goal.resume')}
           </button>
         )}
         {(goal.status === 'paused' || goal.status === 'blocked' || goal.status === 'complete') && goal.status !== 'complete' && (
           <button type="button" className="btn-ghost btn-sm" onClick={() => runtime.cancelGoal()} title={t('goal.remove')}>
-            ✕ 移除
+            ✕ {t('goal.remove')}
           </button>
         )}
       </span>
@@ -59,7 +59,7 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal goal-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <span className="modal-title">🎯 目标驱动</span>
+          <span className="modal-title">🎯 {t('goal.title')}</span>
           <button type="button" className="btn-icon" onClick={onClose}>
             ×
           </button>
@@ -74,19 +74,19 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
               <div className="form-block-title">{t('goal.current')} · {t(`goal.status.${current.status}`)}</div>
               <p className="form-desc">{current.objective}</p>
               <p className="form-desc">
-                轮次 {current.rounds}/{current.maxRounds}
+                {t('goal.rounds')} {current.rounds}/{current.maxRounds}
                 {current.note ? ` · ${current.note}` : ''} —— {t('goal.editHint')}/重启目标。
               </p>
             </div>
           ) : null}
           <div className="form-block">
             <div className="form-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
-              <label>目标（要达成什么，越具体越好）</label>
+              <label>{t('goal.label')}</label>
               <textarea
                 className="goal-input"
                 rows={3}
                 value={objective}
-                placeholder="例：在工作区构建一个完整的贪吃蛇游戏（game.html），并在预览中验证可玩"
+                placeholder="e.g. Build a complete Snake game (game.html), verify playable in preview"
                 onChange={(e) => setObjective(e.target.value)}
               />
             </div>
@@ -106,7 +106,7 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
               取消
             </button>
             <button type="button" className="btn-primary" disabled={!objective.trim()} onClick={start}>
-              🚀 开始推进
+              🚀 {t('goal.start')}
             </button>
           </div>
         </div>

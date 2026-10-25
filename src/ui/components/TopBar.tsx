@@ -52,8 +52,8 @@ export function TopBar({
             className="title-input"
           />
         ) : (
-          <button type="button" className="title-btn" onClick={() => setEditing(true)} title="点击重命名">
-            {snapshot.session?.title || '未命名会话'}
+          <button type="button" className="title-btn" onClick={() => setEditing(true)} title={t("topbar.clickRename")}>
+            {snapshot.session?.title || t('topbar.untitled')}
           </button>
         )}
       </div>
@@ -88,7 +88,7 @@ export function TopBar({
         >
           {snapshot.compacting ? <span className="spin-dot" /> : '⚡'}
         </button>
-        <button type="button" className={`btn-icon ${rightOpen ? 'on' : ''}`} onClick={onToggleRight} title="工作区面板">
+        <button type="button" className={`btn-icon ${rightOpen ? 'on' : ''}`} onClick={onToggleRight} title={t("topbar.workspacePanel")}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M15 4v16" />
