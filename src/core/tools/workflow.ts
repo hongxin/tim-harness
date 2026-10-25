@@ -83,7 +83,7 @@ export const askUserTool: ToolDef = {
 export const spawnAgentTool: ToolDef = {
   name: 'spawn_agent',
   description:
-    'Delegate a self-contained task to a fresh subagent that works in its own context (same model, same workspace tools, no spawn_agent to avoid recursion). It returns the final report only. Use it for focused independent work — research, a scoped implementation, an audit — to conserve this conversation\'s context.',
+    'Delegate a self-contained task to a fresh subagent that works in its own context (own model per settings — often a cheaper one, same workspace tools, no spawn_agent to avoid recursion). It returns the final report only. Use it for focused independent work — research, a scoped implementation, an audit — to conserve this conversation\'s context.',
   parameters: {
     type: 'object',
     properties: {

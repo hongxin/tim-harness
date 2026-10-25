@@ -120,7 +120,9 @@ node scripts/e2e-check.mjs   # 真实浏览器端到端检查（需 dev server +
 
 - API Key 仅存本机 IndexedDB，不会发给除你所选 Provider 之外的任何一方；请勿在共享设备上保存密钥。
 - 会话与文件仅存本机浏览器；「清空浏览器数据」会一并清除，重要内容请用导出功能备份。
-- `run_js` 是计算沙箱（无 DOM、独立线程、超时终止），但不是网络隔离沙箱。
+- `run_js` 是计算沙箱（无 DOM、独立线程、超时终止），并已遮蔽同源存储 API
+  （indexedDB / caches / localStorage / sessionStorage / navigator.storage）——
+  模型生成的代码读不到本应用存储的密钥与会话；但**不是网络隔离沙箱**，代码仍可发起 fetch。
 - `web_fetch` 受浏览器 CORS 约束，可配置代理模板（设置 → 网络）。
 
 ## 路线图

@@ -312,15 +312,19 @@ export class HarnessRuntime {
         // 启动时修复历史会话中的悬空 tool_calls（页面刷新/崩溃留下的不合法序列）
         const fixed = repairSessionIntegrity(s)
         // 浏览器现实：重载后不可能有后台轮次 → 活动目标诚实转为暂停
-        if (s.goal?.status === 'active') {
-          s.goal.status = 'paused'
-          s.goal.note = '页面重载，已自动暂停（点击继续可恢复推进）'
-          s.goal.updatedAt = Date.now()
+        const wasActive = s.goal?.status === 'active'
+        if (wasActive) {
+          s.goal!.status = 'paused'
+          s.goal!.note = '页面重载，已自动暂停（点击继续可恢复推进）'
+          s.goal!.updatedAt = Date.now()
         }
-        if (fixed > 0 || s.goal?.status === 'paused') {
+        // 仅在实际发生变更时写审计与持久化 —— 否则每次启动都会给
+        // paused 会话追加 "0 dangling" 记录并重写 KV（审计污染 + 写放大）
+        if (fixed > 0 || wasActive) {
           repaired = true
           if (!s.ops) s.ops = []
-          s.ops.push({ op: 'repair', ts: Date.now(), note: `${fixed} dangling tool calls` })
+          if (fixed > 0) s.ops.push({ op: 'repair', ts: Date.now(), note: `${fixed} dangling tool calls` })
+          if (wasActive) s.ops.push({ op: 'goal', ts: Date.now(), note: 'reload → paused' })
           await this.deps.kv.set(k, s)
         }
         sessions.push(s)

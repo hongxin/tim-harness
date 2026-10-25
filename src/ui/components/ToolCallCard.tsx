@@ -2,6 +2,9 @@
 import { useState } from 'react'
 import type { ChatMessage } from '../../core/types'
 
+/** 展开渲染上限：完整内容仍在会话记录里，这里只保 DOM 不被超长输出压垮 */
+const BODY_CAP = 50_000
+
 const TOOL_GLYPHS: Record<string, string> = {
   ls: '▤',
   read_file: '◉',
@@ -44,6 +47,12 @@ function argSummary(name: string, argsRaw?: string): string {
   return keys.length ? `${keys[0]}: ${String(args[keys[0]]).slice(0, 40)}` : ''
 }
 
+function renderOut(content?: string | null): string {
+  const c = content ?? ''
+  if (c.length <= BODY_CAP) return c
+  return c.slice(0, BODY_CAP) + `\n…[预览截断：共 ${c.length.toLocaleString()} 字符，完整内容见会话记录]`
+}
+
 export function ToolCallCard({ msg }: { msg: ChatMessage }) {
   const [open, setOpen] = useState(msg.toolOk === false) // 静默成功、喧哗失败
   const ok = msg.toolOk
@@ -75,7 +84,7 @@ export function ToolCallCard({ msg }: { msg: ChatMessage }) {
               <pre>{prettyArgs}</pre>
             </details>
           )}
-          <pre className="toolcard-out">{msg.content}</pre>
+          <pre className="toolcard-out">{renderOut(msg.content)}</pre>
         </div>
       )}
     </div>

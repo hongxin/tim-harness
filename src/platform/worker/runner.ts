@@ -62,12 +62,31 @@ self.onmessage = async (ev: MessageEvent) => {
   let result: unknown
   let error: string | undefined
   try {
+    // 存储隔离：沙箱代码与主应用同源，若不遮蔽，可直接经 indexedDB /
+    // navigator.storage(OPFS) 读到设置里的 API Key 再经 fetch 外传。
+    // 以函数参数遮蔽存储类全局（严格模式下参数即局部绑定，遮蔽同名全局）。
+    // 说明：这是默认拒绝的加固，不是安全边界 —— 网络仍开放（见 README）。
+    const safeNavigator = new Proxy(navigator, {
+      get: (t, p) => (p === 'storage' ? undefined : Reflect.get(t, p)),
+    })
+    const safeGlobalThis = new Proxy({}, {
+      get: (_t, p) => (p === 'indexedDB' || p === 'caches' || p === 'localStorage' || p === 'sessionStorage'
+        ? undefined
+        : Reflect.get(self, p)),
+      has: () => true,
+    })
     // 包裹为 async IIFE：支持顶层 await 与 return
     const fn = new Function(
-      'console',
+      'console', 'self', 'indexedDB', 'caches', 'localStorage', 'sessionStorage', 'navigator', 'globalThis',
       '"use strict";\nreturn (async () => {\n' + code + '\n})()',
-    ) as (c: typeof fakeConsole) => Promise<unknown>
-    result = await fn(fakeConsole)
+    ) as (c: typeof fakeConsole, s: unknown, idb: undefined, cch: undefined, ls: undefined, ss: undefined, nav: Navigator, gt: unknown) => Promise<unknown>
+    result = await fn(
+      fakeConsole,
+      { postMessage: undefined }, // self 遮蔽：不给沙箱向主线程自发消息的入口
+      undefined, undefined, undefined, undefined,
+      safeNavigator,
+      safeGlobalThis,
+    )
     ok = true
   } catch (e) {
     error = e instanceof Error ? `${e.name}: ${e.message}\n${(e.stack ?? '').split('\n').slice(1, 4).join('\n')}` : String(e)

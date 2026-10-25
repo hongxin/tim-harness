@@ -1284,4 +1284,35 @@ const FINAL = () => [
   )
 }
 
+/* ---------------- 21. 启动审计不污染：paused 目标二次启动零追加 ---------------- */
+
+{
+  const kv21 = new MapKV()
+  const mk = (goal?: any) => ({
+    id: 's_boot_' + (goal ? 'g' : 'n'), title: 't', createdAt: 0, updatedAt: 1,
+    todos: [], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'ok' }],
+    ...(goal ? { goal } : {}),
+    ops: [{ op: 'fork', ts: 1 }],
+  })
+  await kv21.set('session:s_boot_g', mk({ objective: 'x', status: 'paused', rounds: 1, maxRounds: 8, createdAt: 0, updatedAt: 0 }))
+  await kv21.set('session:s_boot_n', mk())
+  const boot = () => new HarnessRuntime({
+    kv: kv21, fs: new TestFS(), transport: new ScriptedTransport([]),
+    sandbox: { run: async () => ({ ok: true, logs: [], result: 0, durationMs: 1 }) },
+  })
+  const rtA = await boot()
+  await rtA.boot()
+  const afterFirst = await kv21.get<any>('session:s_boot_g')
+  const opsFirst = afterFirst.ops.length
+  const rtB = await boot()
+  await rtB.boot()
+  const rtC = await boot()
+  await rtC.boot()
+  const afterThird = await kv21.get<any>('session:s_boot_g')
+  assert(afterThird.ops.length === opsFirst, `启动审计：paused 目标重复启动不追加 repair 记录（首次 ${opsFirst} → 三次后 ${afterThird.ops.length}）`)
+  const plain = await kv21.get<any>('session:s_boot_n')
+  assert(plain.ops.length === 1, '启动审计：无目标会话完全不动')
+}
+
 console.log(`\n全部通过（${passed} assertions）。core 层可在无浏览器环境完整运行。`)
