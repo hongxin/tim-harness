@@ -771,7 +771,7 @@ export function RightPanel({
                       onClick={() => setDevice(d)}
                       title={d === 'auto' ? t('panel.responsive') : `${d}px`}
                     >
-                      {d === 'auto' ? '{t('panel.responsive')}' : `${d}`}
+                      {d === 'auto' ? t('panel.responsive') : `${d}`}
                     </button>
                   ))}
                 </span>
