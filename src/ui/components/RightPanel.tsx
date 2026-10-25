@@ -216,10 +216,10 @@ function ConsolePanel({
   }, [filtered.length])
 
   const filters: { key: ConsoleFilter; label: string }[] = [
-    { key: 'all', label: `全部 ${entries.length}` },
-    { key: 'log', label: t('panel.console.log') },
-    { key: 'warn', label: warnCount ? `警告 ${warnCount}` : t('panel.console.warn') },
-    { key: 'error', label: errCount ? `错误 ${errCount}` : t('panel.console.error') },
+    { key: 'all', label: `${tt('panel.console.all', { count: entries.length })}` },
+    { key: 'log', label: tt('panel.console.log') },
+    { key: 'warn', label: warnCount ? `${tt('panel.console.warn')} ${warnCount}` : tt('panel.console.warn') },
+    { key: 'error', label: errCount ? `${tt('panel.console.error')} ${errCount}` : tt('panel.console.error') },
   ]
 
   return (
@@ -241,7 +241,7 @@ function ConsolePanel({
         ) : (
           <span>
             控制台{entries.length > 0 && <span className="pc-count">{entries.length}</span>}
-            {errCount > 0 && <span className="pc-err">{errCount} 错误</span>}
+            {errCount > 0 && <span className="pc-err">{errCount} {tt('panel.console.error')}</span>}
           </span>
         )}
         <button type="button" className="pc-clear" onClick={onClear}>
