@@ -3,6 +3,8 @@
  * 面板左缘可拖拽调宽（280–720px，localStorage 记忆）；
  * 大窗预览：设备尺寸预设、控制台分级过滤、新标签打开、Esc 关闭、状态栏。
  */
+import { useTranslation } from '../../i18n/useTranslation'
+import { t as tt } from '../../i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileEntry } from '../../core/ports'
 import type { RuntimeSnapshot } from '../../core/runtime'
@@ -106,6 +108,7 @@ function TreeRow({
   onDownload: (n: TreeNode) => void
   onDelete: (n: TreeNode) => void
 }) {
+  const { t } = useTranslation()
   const isOpen = expanded.has(node.path)
   const isHtml = /\.html?$/i.test(node.name)
   const isNew = written.has(node.path)
@@ -122,7 +125,7 @@ function TreeRow({
         <span className={`ft-name ${isNew ? 'new' : ''}`} title={node.path}>
           {node.name}
         </span>
-        {isNew && <span className="ft-new-badge" title="本会话由智能体写入">new</span>}
+        {isNew && <span className="ft-new-badge" title={t('panel.written')}>new</span>}
         {node.kind === 'file' && <span className="ft-size">{fmtSize(node.size)}</span>}
         {node.kind === 'file' && (
           <span className="ft-actions">
@@ -130,7 +133,7 @@ function TreeRow({
               <button
                 type="button"
                 className="ft-btn"
-                title="预览"
+                title={t('panel.preview')}
                 onClick={(e) => {
                   e.stopPropagation()
                   onPreviewHtml(node)
@@ -142,7 +145,7 @@ function TreeRow({
             <button
               type="button"
               className="ft-btn"
-              title="下载"
+              title={t('panel.download')}
               onClick={(e) => {
                 e.stopPropagation()
                 onDownload(node)
@@ -153,7 +156,7 @@ function TreeRow({
             <button
               type="button"
               className="ft-btn ft-btn-danger"
-              title="删除"
+              title={t('panel.delete')}
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete(node)
@@ -214,9 +217,9 @@ function ConsolePanel({
 
   const filters: { key: ConsoleFilter; label: string }[] = [
     { key: 'all', label: `全部 ${entries.length}` },
-    { key: 'log', label: '日志' },
-    { key: 'warn', label: warnCount ? `警告 ${warnCount}` : '警告' },
-    { key: 'error', label: errCount ? `错误 ${errCount}` : '错误' },
+    { key: 'log', label: t('panel.console.log') },
+    { key: 'warn', label: warnCount ? `警告 ${warnCount}` : t('panel.console.warn') },
+    { key: 'error', label: errCount ? `错误 ${errCount}` : t('panel.console.error') },
   ]
 
   return (
@@ -247,7 +250,7 @@ function ConsolePanel({
       </div>
       <div className="pc-body" ref={bodyRef}>
         {filtered.length === 0 ? (
-          <div className="pc-empty">{entries.length === 0 ? '暂无输出 —— 页面内 console.log / 报错会显示在这里' : '当前筛选下无输出'}</div>
+          <div className="pc-empty">{entries.length === 0 ? t('panel.console.empty') : t('panel.console.noMatch')}</div>
         ) : (
           filtered.map((c, i) => (
             <div key={i} className={`pc-line pc-${levelClass(c.level)}`}>
@@ -277,6 +280,7 @@ export function RightPanel({
   onWidthChange: (w: number) => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('files')
   const [files, setFiles] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -419,8 +423,8 @@ export function RightPanel({
 
   const deleteFile = async (node: { path: string; name: string; kind: string }) => {
     const msg = node.kind === 'dir'
-      ? `删除目录「${node.name}」及其所有内容？此操作不可恢复。`
-      : `删除文件「${node.name}」？此操作不可恢复。`
+      ? t('panel.deleteDirConfirm', { name: node.name })
+      : t('panel.deleteConfirm', { name: node.name })
     if (!confirm(msg)) return
     try {
       await runtime.uiDeleteEntry(node.path)
@@ -496,22 +500,22 @@ export function RightPanel({
         className="rp-resizer"
         onPointerDown={startResize}
         onDoubleClick={() => onWidthChange(RP_WIDTH_DEFAULT)}
-        title="拖动调整宽度 · 双击恢复默认"
+        title={t('panel.dragResize')}
         role="separator"
         aria-orientation="vertical"
       />
       <div className="rp-tabs">
         <button type="button" className={`rp-tab ${tab === 'files' ? 'on' : ''}`} onClick={() => setTab('files')}>
-          文件 <span className="rp-count">{files.filter((f) => f.kind === 'file').length}</span>
+          {t('panel.tab.files')} <span className="rp-count">{files.filter((f) => f.kind === 'file').length}</span>
         </button>
         <button type="button" className={`rp-tab ${tab === 'preview' ? 'on' : ''}`} onClick={() => setTab('preview')}>
-          预览 {htmlFiles.length > 0 && <span className="rp-count">{htmlFiles.length}</span>}
+          {t('panel.tab.preview')} {htmlFiles.length > 0 && <span className="rp-count">{htmlFiles.length}</span>}
           {newHtml && tab !== 'preview' && <span className="rp-dot" title="本会话有新写入的 HTML" />}
         </button>
         <button type="button" className={`rp-tab ${tab === 'todos' ? 'on' : ''}`} onClick={() => setTab('todos')}>
-          任务 <span className="rp-count">{todos.length}</span>
+          {t('panel.tab.todos')} <span className="rp-count">{todos.length}</span>
         </button>
-        <button type="button" className="btn-icon rp-close" onClick={onClose} title="收起面板">
+        <button type="button" className="btn-icon rp-close" onClick={onClose} title={t('panel.collapse')}>
           ×
         </button>
       </div>
@@ -549,11 +553,11 @@ export function RightPanel({
           )}
           <div className="snap-section">
             <div className="snap-head">
-              <span>📷 快照（轻量 git）</span>
+              <span>📷 {t('panel.tab.snapshots')}</span>
               <button
                 type="button"
                 className="btn-ghost btn-sm"
-                title="保存当前工作区为快照"
+                title="t('panel.saveSnapshot')"
                 onClick={() => {
                   const label = prompt('快照名称：', `手动快照 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`)
                   if (label !== null) void runtime.uiSaveSnapshot(label).then(() => refreshSnapshots())
@@ -563,7 +567,7 @@ export function RightPanel({
               </button>
             </div>
             {snapshots.length === 0 ? (
-              <div className="snap-empty">暂无快照 · 保存后可随时精确恢复（恢复前自动保护）</div>
+              <div className="snap-empty">{t('panel.noSnapshotsHint')}</div>
             ) : (
               snapshots.map((sn) => (
                 <div key={sn.id} className="snap-row" title={sn.label}>
@@ -612,10 +616,10 @@ export function RightPanel({
             )}
           </div>
           {loading ? (
-            <div className="rp-empty">读取中…</div>
+            <div className="rp-empty">{t('common.loading')}</div>
           ) : files.length === 0 ? (
             <div className="rp-empty">
-              工作区还是空的。
+              {t('panel.emptyWorkspace')}
               <br />
               让智能体「创建 index.html」试试，或点「导入」上传文件。
             </div>
@@ -676,7 +680,7 @@ export function RightPanel({
             )
           ) : htmlFiles.length > 0 ? (
             <div className="preview-pick">
-              <div className="rp-empty">选择一个 HTML 文件开始预览：</div>
+              <div className="rp-empty">{t('panel.selectHtml')}</div>
               {htmlFiles.map((f) => (
                 <button key={f.path} type="button" className="preview-pick-item" onClick={() => openPreview(f.path)}>
                   ▶ {f.path.replace(/^\//, '')}
@@ -685,7 +689,7 @@ export function RightPanel({
             </div>
           ) : (
             <div className="rp-empty">
-              还没有可预览的 HTML 文件。
+              {t('panel.noHtml')}
               <br />
               让智能体「写一个 game.html 小游戏」，写完即可在这里预览运行效果。
             </div>
@@ -698,7 +702,7 @@ export function RightPanel({
         <div className="rp-body">
           {todos.length === 0 ? (
             <div className="rp-empty">
-              还没有任务计划。
+              {t('panel.noTodosHint')}
               <br />
               复杂任务中智能体会用 todo_write 维护清单，这里实时展示。
             </div>
@@ -730,7 +734,7 @@ export function RightPanel({
                       openPreview(modal.path)
                     }}
                   >
-                    在预览中打开
+                    {t('panel.previewOpen')}
                   </button>
                 )}
                 <button type="button" className="btn-ghost btn-sm" onClick={() => void downloadFile(modal.path)}>
@@ -765,9 +769,9 @@ export function RightPanel({
                       type="button"
                       className={`pb-device-btn ${device === d ? 'on' : ''}`}
                       onClick={() => setDevice(d)}
-                      title={d === 'auto' ? '自适应宽度' : `${d}px 设备宽度`}
+                      title={d === 'auto' ? t('panel.responsive') : `${d}px`}
                     >
-                      {d === 'auto' ? '自适应' : `${d}`}
+                      {d === 'auto' ? '{t('panel.responsive')}' : `${d}`}
                     </button>
                   ))}
                 </span>
@@ -787,7 +791,7 @@ export function RightPanel({
                 <div className={`pb-device ${devicePx ? 'fixed' : 'auto'}`} style={devicePx ? { width: devicePx } : undefined}>
                   <div className="pb-device-bar">
                     <span className="pb-device-url">{previewPath.replace(/^\//, '')}</span>
-                    <span className="pb-device-size">{devicePx ? `${devicePx}px` : '自适应'}</span>
+                    <span className="pb-device-size">{devicePx ? `${devicePx}px` : '{t('panel.responsive')}'}</span>
                   </div>
                   <iframe
                     key={`${previewPath}#${previewNonce}`}
