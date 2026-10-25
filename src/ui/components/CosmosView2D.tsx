@@ -1,98 +1,35 @@
-import { drawContextGauge } from './MachineParts'
-/** Cosmos 2D 视图：结构化星座布局（v3） */
+/** Cosmos 2D 视图：JetBot 风格冒泡 */
 import { useEffect, useRef, useState } from 'react'
-import type { RuntimeSnapshot } from '../../core/runtime'
-import type { HarnessRuntime } from '../../core/runtime'
-import { CosmosCanvas2D, type CosmosNode2D, type TurnCluster } from './CosmosCanvas2D'
-import { mapSessionToCosmosV2 as mapSessionToCosmos } from './TurnStackV2'
+import type { RuntimeSnapshot, HarnessRuntime } from '../../core/runtime'
+import { CosmosCanvas, mapSession, type CosmosNode } from './CosmosCanvas2D'
 
 export function CosmosView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const engineRef = useRef<CosmosCanvas2D | null>(null)
-  const [selected, setSelected] = useState<CosmosNode2D | null>(null)
-  const gaugeRef = useRef<HTMLCanvasElement>(null)
-  const [caption, setCaption] = useState<string | null>(null)
-  const [tourIndex, setTourIndex] = useState(-1)
-  const [tourSteps, setTourSteps] = useState<TurnCluster[]>([])
+  const engineRef = useRef<CosmosCanvas | null>(null)
+  const [selected, setSelected] = useState<CosmosNode | null>(null)
 
   useEffect(() => {
     if (!canvasRef.current) return
-    const engine = new CosmosCanvas2D(canvasRef.current)
+    const engine = new CosmosCanvas(canvasRef.current)
     engine.setOnNodeSelect(setSelected)
-    engine.setOnCaptionUpdate(setCaption)
     engineRef.current = engine
-    // 监听主题变化，实时更新 Cosmos 配色
-    const themeObserver = new MutationObserver(() => {
-      engineRef.current?.updateTheme()
-    })
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    })
-    return () => {
-      themeObserver.disconnect()
-      engine.destroy(); engineRef.current = null
-    }
+    return () => { engine.destroy(); engineRef.current = null }
   }, [])
 
   useEffect(() => {
     const session = snapshot.session
     if (!session) return
-    const { nodes, edges, clusters } = mapSessionToCosmos(session.messages, session.compacted?.foldedCount ?? 0)
-    engineRef.current?.updateTheme()
-    engineRef.current?.setNodes(nodes, edges, clusters)
-    setTourSteps(engineRef.current?.getTourSteps() ?? [])
+    const { nodes, edges } = mapSession(session.messages as any, session.compacted?.foldedCount ?? 0)
+    engineRef.current?.setNodes(nodes, edges)
   }, [snapshot.rev, snapshot.session]) // eslint-disable-line react-hooks/exhaustive-deps
-
-    // 上下文液位计
-  useEffect(() => {
-    if (!gaugeRef.current || !snapshot.contextInfo) return
-    const ctx = gaugeRef.current.getContext('2d')
-    if (!ctx) return
-    drawContextGauge(ctx, 0, 0, 120, 16,
-      snapshot.contextInfo.sentChars / snapshot.contextInfo.budgetChars,
-      snapshot.contextInfo.masked,
-      (document.documentElement.dataset.theme ?? 'dark') !== 'light')
-  }, [snapshot.contextInfo])
-
-  const inTour = tourIndex >= 0 && tourIndex < tourSteps.length
-  const handlePrev = () => { if (tourIndex > 0) { setTourIndex(tourIndex - 1); engineRef.current?.flyToTurn(tourSteps[tourIndex - 1].turnId) } }
-  const handleNext = () => { if (tourIndex < tourSteps.length - 1) { setTourIndex(tourIndex + 1); engineRef.current?.flyToTurn(tourSteps[tourIndex + 1].turnId) } }
-  const exitTour = () => { setTourIndex(-1); engineRef.current?.resetView() }
-
-  const ctxPct = snapshot.contextInfo ? Math.round((snapshot.contextInfo.sentChars / snapshot.contextInfo.budgetChars) * 100) : 0
 
   return (
     <div className="cosmos-view">
       <canvas ref={canvasRef} className="cosmos-canvas2d" />
       <div className="cosmos-hud">
-        <button type="button" className="btn-ghost btn-sm" onClick={() => engineRef.current?.resetView()}>⟲ 适配</button>
-        <span className="cosmos-stat">
-          {snapshot.session?.messages.length ?? 0} 消息 · {tourSteps.length} 回合
-          {snapshot.contextInfo?.masked ? ' · 已折叠' : ''}
-        </span>
-        <span className="cosmos-stat">上下文 {ctxPct}%</span>
-        <span className="cosmos-stat">{(snapshot.session?.usage.total_tokens ?? 0).toLocaleString()} tokens</span>
-        <canvas ref={gaugeRef} width={120} height={16} style={{ borderRadius: 4, marginLeft: 4 }} />
+        <span className="cosmos-stat">🌌 星图</span>
+        <span className="cosmos-stat">{snapshot.session?.messages.length ?? 0} 消息</span>
       </div>
-      {/* bbycroft 步进叙事 */}
-      {caption && (
-        <div className="cosmos-caption">{caption}</div>
-      )}
-      {inTour && tourSteps[tourIndex] && (
-        <div className="cosmos-tour">
-          <span className="cosmos-tour-step">{tourIndex + 1}/{tourSteps.length}</span>
-          <span className="cosmos-tour-label">{tourSteps[tourIndex].summary}</span>
-          <button type="button" className="btn-ghost btn-sm" onClick={handlePrev} disabled={tourIndex <= 0}>←</button>
-          <button type="button" className="btn-ghost btn-sm" onClick={handleNext} disabled={tourIndex >= tourSteps.length - 1}>→</button>
-          <button type="button" className="btn-ghost btn-sm" onClick={exitTour}>退出</button>
-        </div>
-      )}
-      {!inTour && tourSteps.length > 0 && (
-        <button type="button" className="cosmos-tour-start" onClick={() => { setTourIndex(0); engineRef.current?.flyToTurn(tourSteps[0].turnId) }}>
-          ▶ 导览
-        </button>
-      )}
       {selected && (
         <div className="cosmos-detail">
           <div className="cosmos-detail-head">

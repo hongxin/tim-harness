@@ -17,7 +17,7 @@
  * 之后：1 个 TurnStackNode（含 N 个 StepRecord）
  */
 
-import type { CosmosNode2D, CosmosEdge2D, TurnCluster } from './CosmosCanvas2D'
+// Types are self-contained in this module
 import { TOOL_HUE } from './CosmosCanvas2D'
 
 /* ══════════════════════════════════════════════════════
@@ -33,7 +33,7 @@ export interface StepRecord {
 }
 
 /** 扩展节点：一个回合的完整 assistant 活动 */
-export interface TurnStackNode extends Omit<CosmosNode2D, 'kind'> {
+export interface TurnStackNode extends Omit<any, 'kind'> {
   kind: 'turn-stack'
   steps: StepRecord[]
   expanded: boolean
@@ -63,10 +63,10 @@ export function mapSessionToCosmosV2(
     toolOk?: boolean; durationMs?: number
   }>,
   folded: number,
-): { nodes: CosmosNode2D[]; edges: CosmosEdge2D[]; clusters: TurnCluster[] } {
-  const nodes: (CosmosNode2D | TurnStackNode)[] = []
-  const edges: CosmosEdge2D[] = []
-  const clusters: TurnCluster[] = []
+): { nodes: any[]; edges: any[]; clusters: any[] } {
+  const nodes: (any | TurnStackNode)[] = []
+  const edges: any[] = []
+  const clusters: any[] = []
   let turn = 0
   let prevLast: string | null = null
 
@@ -221,7 +221,7 @@ export function mapSessionToCosmosV2(
     i++ // 其他角色跳过
   }
 
-  return { nodes: nodes as CosmosNode2D[], edges, clusters }
+  return { nodes: nodes as any[], edges, clusters }
 }
 
 /* ══════════════════════════════════════════════════════

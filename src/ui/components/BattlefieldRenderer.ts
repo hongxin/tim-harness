@@ -155,23 +155,64 @@ export class BattlefieldRenderer {
     const fillLight = new THREE.DirectionalLight(0x4A9EFF, 0.3)
     fillLight.position.set(-10, 5, -20)
     this.scene.add(fillLight)
+    
+    // 半球光（天空蓝+地面暖色——自然氛围）
+    const hemiLight = new THREE.HemisphereLight(0x1a3a5c, 0x0D1117, 0.4)
+    this.scene.add(hemiLight)
 
-    // 地面（深色平面 + 网格）
-    const groundGeo = new THREE.PlaneGeometry(300, 300)
+    // 地面：多层材质营造氛围（非纯色平面）
+    const groundGeo = new THREE.PlaneGeometry(400, 400)
+    
+    // 主地面（深蓝黑，微金属感反光）
     const groundMat = new THREE.MeshStandardMaterial({
       color: 0x0D1117,
-      roughness: 0.9,
-      metalness: 0.1,
+      roughness: 0.6,
+      metalness: 0.3,
     })
     const ground = new THREE.Mesh(groundGeo, groundMat)
     ground.rotation.x = -Math.PI / 2
     ground.position.y = 0
     this.scene.add(ground)
+    
+    // 地面纹理层（发光网格，更密更明显）
+    const gridFine = new THREE.GridHelper(200, 100, 0x30363D, 0x1a1f28)
+    gridFine.position.y = 0.01
+    this.scene.add(gridFine)
+    
+    // 粗网格（更大间距，更亮，强调战略区域）
+    const gridBold = new THREE.GridHelper(200, 20, 0x4A9EFF, 0x2a3a4a)
+    gridBold.position.y = 0.02
+    gridBold.material.opacity = 0.3
+    gridBold.material.transparent = true
+    this.scene.add(gridBold)
+    
+    // 地面光晕（中心区域亮，边缘暗——聚焦效果）
+    const glowGeo = new THREE.CircleGeometry(80, 32)
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0x1a2536,
+      transparent: true,
+      opacity: 0.5,
+    })
+    const groundGlow = new THREE.Mesh(glowGeo, glowMat)
+    groundGlow.rotation.x = -Math.PI / 2
+    groundGlow.position.y = 0.005
+    this.scene.add(groundGlow)
+    
+    // 边缘暗环（渐隐到黑色——自然边界）
+    const edgeGeo = new THREE.RingGeometry(70, 120, 32)
+    const edgeMat = new THREE.MeshBasicMaterial({
+      color: 0x0A0E14,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide,
+    })
+    const edge = new THREE.Mesh(edgeGeo, edgeMat)
+    edge.rotation.x = -Math.PI / 2
+    edge.position.y = 0.003
+    this.scene.add(edge)
 
     // 网格线（战术地图感，更细密）
-    const grid = new THREE.GridHelper(200, 80, 0x30363D, 0x1C2128)
-    grid.position.y = 0.01
-    this.scene.add(grid)
+    
 
     // 中心基地标记（十字准星）
     const centerGeo = new THREE.RingGeometry(3, 3.3, 32)
