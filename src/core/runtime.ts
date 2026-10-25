@@ -112,7 +112,7 @@ export interface RuntimeSnapshot {
 export const DEFAULT_PROVIDERS: ProviderSetting[] = [
   // DeepSeek-V4.1-Flash（1017 版），官方当前建议的默认模型；API model id: deepseek-flash
   { id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-flash' },
-  { id: 'gemini', name: 'Google Gemini（免费）', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-2.5-flash' },
+  { id: 'gemini', name: 'Google Gemini（免费）', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-3.8-flash' },
   { id: 'openrouter', name: 'OpenRouter（免费模型）', baseURL: 'https://openrouter.ai/api/v1', apiKey: '', model: 'google/gemma-4-26b-a4b-it:free' },
   { id: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' },
   { id: 'ollama', name: 'Ollama 本地', baseURL: 'http://localhost:11434/v1', apiKey: '', model: 'qwen2.5:7b' },
@@ -123,9 +123,9 @@ const MODEL_LABELS: Record<string, string> = {
   'deepseek-flash': 'DeepSeek V4.1 Flash',
   'deepseek-chat': 'DeepSeek Chat',
   'deepseek-reasoner': 'DeepSeek Reasoner',
-  'gemini-2.5-flash': 'Gemini 2.5 Flash（免费）',
-  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite（免费）',
-  'gemini-2.5-pro': 'Gemini 2.5 Pro（免费）',
+  'gemini-3.8-flash': 'Gemini 3.8 Flash（免费）',
+  'gemini-3.6-flash': 'Gemini 3.6 Flash（免费）',
+  'gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite（免费）',
   'google/gemma-4-26b-a4b-it:free': 'Gemma 4 26B（免费·OpenRouter）',
   'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nemotron 3 Ultra 550B（免费·OpenRouter）',
 }
@@ -137,6 +137,7 @@ export function modelLabel(model: string): string {
 /** 模型默认值迁移：旧缺省 → 新缺省（只动恰好等于旧默认值的，尊重用户自定义） */
 const MODEL_MIGRATIONS: Record<string, Record<string, string>> = {
   deepseek: { 'deepseek-chat': 'deepseek-flash' },
+  gemini: { 'gemini-2.0-flash': 'gemini-3.8-flash', 'gemini-2.5-flash': 'gemini-3.8-flash', 'gemini-2.5-pro': 'gemini-3.8-flash', 'gemini-2.5-flash-lite': 'gemini-3.5-flash-lite' },
 }
 
 const K_SETTINGS = 'app:settings'
