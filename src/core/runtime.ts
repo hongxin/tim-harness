@@ -113,10 +113,10 @@ export const DEFAULT_PROVIDERS: ProviderSetting[] = [
   // DeepSeek-V4.1-Flash（1017 版），官方当前建议的默认模型；API model id: deepseek-flash
   { id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-flash' },
   { id: 'zhipu', name: '智谱 GLM', baseURL: 'https://open.bigmodel.cn/api/paas/v4', apiKey: '', model: 'glm-5.3' },
+  { id: 'ollama', name: 'Ollama 本地', baseURL: 'http://localhost:11434/v1', apiKey: '', model: 'qwen2.5:7b' },
   { id: 'gemini', name: 'Google Gemini（免费）', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-3.8-flash' },
   { id: 'openrouter', name: 'OpenRouter（免费模型）', baseURL: 'https://openrouter.ai/api/v1', apiKey: '', model: 'google/gemma-4-26b-a4b-it:free' },
   { id: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' },
-  { id: 'ollama', name: 'Ollama 本地', baseURL: 'http://localhost:11434/v1', apiKey: '', model: 'qwen2.5:7b' },
 ]
 
 /** 模型显示名（顶栏芯片用） */
