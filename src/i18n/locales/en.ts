@@ -314,4 +314,7 @@ export const en: Record<string, string> = {
   'view.fail': '✗ Failed',
   'view.success': '✓ Success',
 
+  'chat.example.computeTitle': 'Compute & verify',
+  'chat.example.gameTitle': 'Build a playable game',
+  'chat.example.dataTitle': 'Data analysis',
 }

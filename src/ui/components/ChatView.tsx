@@ -1,5 +1,6 @@
 /** 对话主视图：消息流 + 实时草稿 + 自动跟随 + 回到最新 */
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from '../../i18n/useTranslation'
 import type { AssistantDraft, ChatMessage } from '../../core/types'
 import type { RuntimeSnapshot } from '../../core/runtime'
 import type { HarnessRuntime } from '../../core/runtime'
@@ -15,8 +16,8 @@ function onMarkdownClick(e: React.MouseEvent) {
     if (pre) {
       navigator.clipboard?.writeText(pre.textContent ?? '').then(
         () => {
-          target.textContent = '已复制'
-          setTimeout(() => (target.textContent = '复制'), 1500)
+          target.textContent = useTranslationCopied()
+          setTimeout(() => (target.textContent = useTranslationCopy()), 1500)
         },
         () => {},
       )
@@ -24,9 +25,13 @@ function onMarkdownClick(e: React.MouseEvent) {
   }
 }
 
+// 辅助函数（非组件上下文中无法使用 hook）
+import { t } from '../../i18n'
+function useTranslationCopied() { return t('chat.copied') }
+function useTranslationCopy() { return t('chat.copy') }
+
 function AssistantBody({ content }: { content: string }) {
   const ref = useRef<HTMLDivElement>(null)
-  // 检测到公式时懒加载 KaTeX 精确渲染（失败保持 Unicode 兜底）
   useEffect(() => {
     if (ref.current?.querySelector('[data-tex]')) void enhanceMath(ref.current)
   }, [content])
@@ -36,9 +41,10 @@ function AssistantBody({ content }: { content: string }) {
 }
 
 function ReasoningBlock({ text }: { text: string }) {
+  const { t } = useTranslation()
   return (
     <details className="reasoning">
-      <summary>思考过程</summary>
+      <summary>{t('chat.thinkingProcess')}</summary>
       <pre>{text}</pre>
     </details>
   )
@@ -63,8 +69,8 @@ function DraftView({ draft }: { draft: AssistantDraft }) {
   )
 }
 
-/** 压缩分界卡：早期消息 → 摘要（日志完整保留，仅模型视图收敛） */
 function CompactionDivider({ snapshot }: { snapshot: RuntimeSnapshot }) {
+  const { t } = useTranslation()
   const c = snapshot.session?.compacted
   if (!c) return null
   const savedPct = snapshot.session!.messages.length
@@ -73,35 +79,37 @@ function CompactionDivider({ snapshot }: { snapshot: RuntimeSnapshot }) {
   return (
     <details className="compact-divider">
       <summary>
-        <span className="cd-badge">⚡ 已压缩</span>
-        前 {c.foldedCount} 条消息（约 {savedPct}%）已折叠为摘要 —— 后续对话按尾部计费，完整记录仍在本会话中
-        <span className="cd-time">{new Date(c.createdAt).toLocaleString('zh-CN', { hour12: false })}</span>
+        <span className="cd-badge">{t('chat.compactBadge')}</span>
+        {t('chat.compactDetail', { count: c.foldedCount, pct: savedPct })}
+        <span className="cd-time">{new Date(c.createdAt).toLocaleString(undefined, { hour12: false })}</span>
       </summary>
       <div className="cd-summary md-body" onClick={onMarkdownClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(c.summary) }} />
     </details>
   )
 }
 
-const EXAMPLES = [
-  { title: '计算并验证', text: '用 run_js 计算斐波那契数列前 20 项，写入 fib.md 并读回确认' },
-  { title: '构建可玩的游戏', text: '写一个打砖块 HTML 小游戏到 game.html（单文件），完成后告诉我怎么预览' },
-  { title: '数据分析', text: '生成 100 个正态分布随机数存入 data.json，计算均值和标准差并给出结论' },
-]
-
 function EmptyState({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const provider = snapshot.settings?.providers.find((p) => p.id === snapshot.settings?.activeProviderId)
   const needsKey = provider && !provider.apiKey && !/localhost|127\.0\.0\.1/.test(provider.baseURL)
+
+  const examples = [
+    { title: t('chat.example.computeTitle'), text: t('chat.example.compute') },
+    { title: t('chat.example.gameTitle'), text: t('chat.example.game') },
+    { title: t('chat.example.dataTitle'), text: t('chat.example.data') },
+  ]
+
   return (
     <div className="empty-state">
       <h1>Tim Harness<span className="empty-cursor">_</span></h1>
-      <p className="empty-sub">一个浏览器页面，装载你的整套大模型工程 harness。</p>
+      <p className="empty-sub">{t('chat.empty.tagline')}</p>
       {needsKey && (
         <div className="empty-warn">
-          当前 Provider「{provider?.name}」还没有 API Key。请先到右上角「设置」填写，或切换到本地 Ollama。
+          {t('chat.empty.noKey', { provider: provider?.name ?? '' })}
         </div>
       )}
       <div className="empty-examples">
-        {EXAMPLES.map((ex) => (
+        {examples.map((ex) => (
           <button key={ex.title} type="button" className="example-card" onClick={() => runtime.send(ex.text)}>
             <span className="example-title">{ex.title}</span>
             <span className="example-text">{ex.text}</span>
@@ -113,15 +121,16 @@ function EmptyState({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime:
           <GitHubMark size={14} /> hongxin/tim-harness
         </a>
         <a className="gh-star" href={REPO_STAR_URL} target="_blank" rel="noreferrer">
-          ★ 觉得好用？点个 Star
+          ★ {t('chat.empty.star')}
         </a>
       </div>
-      <p className="gh-hint">开源 · 纯浏览器运行 · API Key 只存在你自己的浏览器里</p>
+      <p className="gh-hint">{t('chat.empty.openSource')}</p>
     </div>
   )
 }
 
 export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime: HarnessRuntime }) {
+  const { t } = useTranslation()
   const scroller = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -130,7 +139,6 @@ export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
   const messageCount = snapshot.session?.messages.length ?? 0
   const hasContent = messageCount > 0 || !!snapshot.draft
 
-  // 会话切换：重置跟随状态并跳到底部
   useEffect(() => {
     pinned.current = true
     setShowJump(false)
@@ -138,7 +146,6 @@ export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
     if (el) el.scrollTop = el.scrollHeight
   }, [sessionId])
 
-  // 内容增长（含 markdown 重排、工具卡展开、流式增量）→ 若在底部则持续跟随
   useEffect(() => {
     const el = scroller.current
     const list = listRef.current
@@ -187,7 +194,7 @@ export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
                       <button
                         type="button"
                         className="msg-action"
-                        title="编辑并重发：截断此消息之后的内容"
+                        title={t('chat.editResend')}
                         onClick={() => runtime.editUserMessage(i)}
                       >
                         ✎
@@ -195,9 +202,9 @@ export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
                       <button
                         type="button"
                         className="msg-action"
-                        title="从此分叉新会话（保留此前上下文）"
+                        title={t('chat.fork')}
                         onClick={() => {
-                          if (confirm('从这条消息分叉出新会话？将复制至此为止的上下文。')) void runtime.forkSession(i)
+                          if (confirm(t('chat.forkConfirm'))) void runtime.forkSession(i)
                         }}
                       >
                         ⑃
@@ -232,8 +239,8 @@ export function ChatView({ snapshot, runtime }: { snapshot: RuntimeSnapshot; run
         )}
       </div>
       {showJump && (
-        <button type="button" className="jump-latest" onClick={jumpToBottom} title="回到最新消息">
-          <span className="jump-arrow">↓</span> 最新消息
+        <button type="button" className="jump-latest" onClick={jumpToBottom} title={t('chat.scrollLatest')}>
+          <span className="jump-arrow">↓</span> {t('chat.latest')}
         </button>
       )}
     </div>

@@ -314,4 +314,7 @@ export const zh: Record<string, string> = {
   'view.fail': '✗ 失败',
   'view.success': '✓ 成功',
 
+  'chat.example.computeTitle': '计算并验证',
+  'chat.example.gameTitle': '构建可玩的游戏',
+  'chat.example.dataTitle': '数据分析',
 }

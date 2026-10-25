@@ -1,4 +1,5 @@
 /** 输入区：自动增高、Enter 发送、运行中变为停止（仍可预输入下一条） */
+import { useTranslation } from '../../i18n/useTranslation'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { RuntimeSnapshot } from '../../core/runtime'
@@ -13,6 +14,7 @@ export function Composer({
   runtime: HarnessRuntime
   askSlot?: ReactNode
 }) {
+  const { t } = useTranslation()
   const [text, setText] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
 
@@ -70,7 +72,7 @@ export function Composer({
           ref={taRef}
           value={text}
           rows={1}
-          placeholder={running ? '智能体运行中… 可先输入下一条任务（发送待其结束后回车）' : '给 Tim 下达任务（Enter 发送 · Shift+Enter 换行）'}
+          placeholder={running ? t('composer.placeholderRunning') : t('composer.placeholder')}
           onChange={(e) => {
             setText(e.target.value)
             autosize()
@@ -83,7 +85,7 @@ export function Composer({
           }}
         />
         {running ? (
-          <button type="button" className="btn-stop" onClick={() => runtime.stop()} title="停止">
+          <button type="button" className="btn-stop" onClick={() => runtime.stop()} title={t('composer.stop')}>
             <span className="stop-square" />
           </button>
         ) : (
@@ -95,12 +97,12 @@ export function Composer({
         )}
       </div>
       <div className="composer-meta">
-        <span>{running ? '智能体运行中 · 工具调用与结果实时展示在上方' : '支持多轮工具调用 · 虚拟工作区 · JS 沙箱 · 子代理'}</span>
+        <span>{running ? t('composer.running') : t('composer.idle')}</span>
         <span className="meta-chips">
           {snapshot.balance && (
             <span
               className={`ctx-chip balance-chip ${Number(snapshot.balance.total) < 5 ? 'ctx-high' : ''}`}
-              title={`DeepSeek 账户余额（${new Date(snapshot.balance.fetchedAt).toLocaleTimeString('zh-CN', { hour12: false })} 查询）\n赠送 ${snapshot.balance.granted} · 充值 ${snapshot.balance.toppedUp} ${snapshot.balance.currency}\n点击刷新`}
+              title={`DeepSeek ${t('composer.balance')}（${new Date(snapshot.balance.fetchedAt).toLocaleTimeString('zh-CN', { hour12: false })} 查询）\n赠送 ${snapshot.balance.granted} · 充值 ${snapshot.balance.toppedUp} ${snapshot.balance.currency}\n点击刷新`}
               onClick={() => void runtime.fetchBalance()}
               style={{ cursor: 'pointer' }}
             >
@@ -112,7 +114,7 @@ export function Composer({
               className={`ctx-chip ${ctx.masked ? 'ctx-masked' : ctxPct > 85 ? 'ctx-high' : ''}`}
               title={`实际发送估算 ${ctx.sentChars.toLocaleString()} / 预算 ${ctx.budgetChars.toLocaleString()} 字符（折叠后）\n会话原始体量 ${ctx.rawChars.toLocaleString()} 字符（${rawPct}%）${ctx.masked ? '\n已自动折叠早期工具输出——完整记录保留在会话中，实际发送的水位才是真实成本' : ''}`}
             >
-              上下文 {ctxPct}%{ctx.masked ? ` · 已折叠(原 ${rawPct}%)` : ''}
+              {t('composer.context')} {ctxPct}%{ctx.masked ? ` · 已折叠(原 ${rawPct}%)` : ''}
             </span>
           )}
           {cachePct !== null && (
@@ -120,7 +122,7 @@ export function Composer({
               className={`ctx-chip ${cachePct >= 60 ? 'ctx-cached' : ''}`}
               title={`前缀缓存命中 ${usage?.prompt_cache_hit_tokens?.toLocaleString()} / 未命中 ${usage?.prompt_cache_miss_tokens?.toLocaleString()} token（命中部分计费约为十分之一）`}
             >
-              缓存命中 {cachePct}%
+              {t('composer.cacheHit')} {cachePct}%
             </span>
           )}
           {est > 0 && <span className="token-chip">{est.toLocaleString()} tokens</span>}
@@ -141,7 +143,7 @@ export function AskUserCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot; 
   return (
     <div className="ask-card">
       <div className="ask-q">
-        <span className="ask-badge">提问</span>
+        <span className="ask-badge">{t('composer.question')}</span>
         {ask.question}
       </div>
       <div className="ask-options">
@@ -159,7 +161,7 @@ export function AskUserCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot; 
           onKeyDown={(e) => {
             if (e.key === 'Enter' && text.trim()) answer(text.trim())
           }}
-          placeholder="或输入自定义回答，回车提交"
+          placeholder={t("composer.answerHint")}
         />
         <button type="button" className="btn-ghost" onClick={() => answer('')}>
           跳过
@@ -179,11 +181,11 @@ export function ApprovalCard({ snapshot, runtime }: { snapshot: RuntimeSnapshot;
   return (
     <div className="approval-card">
       <div className="ask-q">
-        <span className="approval-badge">审批</span>
-        智能体请求执行写操作：<code className="approval-summary">{approval.summary}</code>
+        <span className="approval-badge">{t('composer.approvalTitle')}</span>
+        {t('composer.approvalRequest')}<code className="approval-summary">{approval.summary}</code>
       </div>
       <div className="ask-input-row">
-        <span className="approval-hint">允许后本会话内同类操作不再询问</span>
+        <span className="approval-hint">{t('composer.approvalNote')}</span>
         <button type="button" className="btn-ghost" onClick={() => runtime.answerApproval(approval.id, 'deny')}>
           拒绝
         </button>
