@@ -6,6 +6,7 @@
 
 [![CI](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/ci.yml)
 [![Deploy](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml/badge.svg)](https://github.com/hongxin/tim-harness/actions/workflows/deploy.yml)
+[![Star History Chart](https://api.star-history.com/svg?repos=hongxin/tim-harness&type=Date)](https://star-history.com/#hongxin/tim-harness&Date)
 
 > 🌐 **[Live demo — open and start, zero install](https://hongxin.github.io/tim-harness/)** — bring your own
 > OpenAI-compatible API key (DeepSeek / OpenAI / local Ollama). Your key never leaves your browser.
