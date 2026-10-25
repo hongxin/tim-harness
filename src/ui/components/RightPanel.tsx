@@ -791,7 +791,7 @@ export function RightPanel({
                 <div className={`pb-device ${devicePx ? 'fixed' : 'auto'}`} style={devicePx ? { width: devicePx } : undefined}>
                   <div className="pb-device-bar">
                     <span className="pb-device-url">{previewPath.replace(/^\//, '')}</span>
-                    <span className="pb-device-size">{devicePx ? `${devicePx}px` : '{t('panel.responsive')}'}</span>
+                    <span className="pb-device-size">{devicePx ? `${devicePx}px` : t('panel.responsive')}</span>
                   </div>
                   <iframe
                     key={`${previewPath}#${previewNonce}`}
