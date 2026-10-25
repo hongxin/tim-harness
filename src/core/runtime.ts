@@ -112,6 +112,8 @@ export interface RuntimeSnapshot {
 export const DEFAULT_PROVIDERS: ProviderSetting[] = [
   // DeepSeek-V4.1-Flash（1017 版），官方当前建议的默认模型；API model id: deepseek-flash
   { id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-flash' },
+  { id: 'gemini', name: 'Google Gemini（免费）', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-2.0-flash' },
+  { id: 'openrouter', name: 'OpenRouter（免费模型）', baseURL: 'https://openrouter.ai/api/v1', apiKey: '', model: 'liquid/lfm-2.5-2.6b:free' },
   { id: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' },
   { id: 'ollama', name: 'Ollama 本地', baseURL: 'http://localhost:11434/v1', apiKey: '', model: 'qwen2.5:7b' },
 ]
@@ -121,6 +123,10 @@ const MODEL_LABELS: Record<string, string> = {
   'deepseek-flash': 'DeepSeek V4.1 Flash',
   'deepseek-chat': 'DeepSeek Chat',
   'deepseek-reasoner': 'DeepSeek Reasoner',
+  'gemini-2.0-flash': 'Gemini 2.0 Flash（免费）',
+  'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite（免费）',
+  'gemini-1.5-flash': 'Gemini 1.5 Flash（免费）',
+  'liquid/lfm-2.5-2.6b:free': 'Liquid LFM 2.5（免费）',
 }
 
 export function modelLabel(model: string): string {
@@ -253,6 +259,13 @@ export class HarnessRuntime {
     if (this.booted) return
     const stored = await this.deps.kv.get<AppSettings>(K_SETTINGS)
     if (stored?.providers?.length) {
+      // 迁移：为存量用户补充新预置 Provider（不覆盖已有的自定义 Provider）
+      const existingIds = new Set(stored.providers.map(p => p.id))
+      for (const dp of DEFAULT_PROVIDERS) {
+        if (!existingIds.has(dp.id)) {
+          stored.providers.push({ ...dp })
+        }
+      }
       // 存量设置迁移：把恰好为旧默认模型名的 provider 升级到新默认（不动 Key 等自定义字段）
       let migrated = false
       for (const p of stored.providers) {
