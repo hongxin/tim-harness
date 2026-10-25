@@ -71,7 +71,7 @@ export function GoalModal({ runtime, onClose }: { runtime: HarnessRuntime; onClo
           </p>
           {current ? (
             <div className="form-block">
-              <div className="form-block-title">{t('goal.current')} · {STATUS_LABEL[current.status]}</div>
+              <div className="form-block-title">{t('goal.current')} · {t(`goal.status.${current.status}`)}</div>
               <p className="form-desc">{current.objective}</p>
               <p className="form-desc">
                 轮次 {current.rounds}/{current.maxRounds}
