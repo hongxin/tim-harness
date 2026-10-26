@@ -8,6 +8,7 @@ import { renderMarkdown } from '../markdown'
 import { enhanceMath } from '../math'
 import { ToolCallCard } from './ToolCallCard'
 import { GitHubMark, REPO_STAR_URL, REPO_URL } from './GitHubMark'
+import { QRCode } from './QRCode'
 
 function onMarkdownClick(e: React.MouseEvent) {
   const target = e.target as HTMLElement
@@ -125,6 +126,10 @@ function EmptyState({ snapshot, runtime }: { snapshot: RuntimeSnapshot; runtime:
         </a>
       </div>
       <p className="gh-hint">{t('chat.empty.openSource')}</p>
+      <div className="empty-qr">
+        <QRCode text="https://hongxin.github.io/tim-harness/" size={100} dark={document.documentElement.dataset.theme === 'light' ? '#1a1a2e' : '#E6EDF3'} />
+        <span className="empty-qr-hint">Scan to open</span>
+      </div>
     </div>
   )
 }
