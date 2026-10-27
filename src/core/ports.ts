@@ -26,6 +26,8 @@ export interface VFileSystem {
   list(dir: string): Promise<FileEntry[]>
   /** 递归列出全部条目（grep/glob 用） */
   listAll(): Promise<FileEntry[]>
+  /** 移动/重命名文件或目录（目标父目录须存在） */
+  moveEntry(from: string, to: string): Promise<void>
 }
 
 export interface TransportResponse {

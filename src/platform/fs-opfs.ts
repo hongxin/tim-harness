@@ -212,4 +212,50 @@ export class MemoryFileSystem implements VFileSystem {
     }
     return out
   }
+
+  async moveEntry(from: string, to: string): Promise<void> {
+    // OPFS 没有原生 move → read + write + delete
+    const fromNormalized = from.replace(/^\/+/, '')
+    const toNormalized = to.replace(/^\/+/, '')
+
+    // 检查源是否存在
+    const entries = await this.listAll()
+    const sourceExists = entries.some(e => e.path === fromNormalized)
+    if (!sourceExists) throw new Error(`moveEntry: source not found: ${from}`)
+
+    // 检查目标是否已存在
+    const targetExists = entries.some(e => e.path === toNormalized)
+    if (targetExists) throw new Error(`moveEntry: target already exists: ${to}`)
+
+    // 确保目标父目录存在
+    const parentDir = toNormalized.split('/').slice(0, -1).join('/')
+    if (parentDir) await this.mkdir('/' + parentDir)
+
+    // 移动文件（读取 → 写入 → 删除源）
+    if (this.mode === 'opfs') {
+      // 获取源句柄
+      const [sourceDir, sourceName] = this.splitPath(fromNormalized)
+      const parentHandle = await this.getDirHandle(sourceDir)
+      const fileHandle = await parentHandle.getFileHandle(sourceName)
+      const data = await fileHandle.getFile()
+
+      // 写入目标
+      const [targetDir, targetName] = this.splitPath(toNormalized)
+      const targetParent = await this.getDirHandle(targetDir)
+      const newHandle = await targetParent.getFileHandle(targetName, { create: true })
+      const writable = await newHandle.createWritable()
+      await writable.write(data)
+      await writable.close()
+
+      // 删除源
+      await parentHandle.removeEntry(sourceName)
+    } else {
+      // KV 模式
+      const content = await this.kv.get<string>('vfs:' + fromNormalized)
+      if (content === undefined) throw new Error(`moveEntry: source not found in KV: ${from}`)
+      await this.kv.set('vfs:' + toNormalized, content)
+      await this.kv.delete('vfs:' + fromNormalized)
+    }
+  }
+}
 }

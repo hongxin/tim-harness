@@ -304,4 +304,31 @@ export const deleteFileTool: ToolDef = {
   },
 }
 
+
+export const moveFileTool: ToolDef = {
+  name: 'move_file',
+  description:
+    'Move or rename a file/directory in the virtual workspace. The target parent directory must exist (use mkdir first if needed).',
+  parameters: {
+    type: 'object',
+    properties: {
+      from: { type: 'string', description: 'Source path, e.g. "src/old-name.ts"' },
+      to: { type: 'string', description: 'Destination path, e.g. "src/new-name.ts" or "lib/moved.ts"' },
+    },
+    required: ['from', 'to'],
+  },
+  async execute(args, ctx) {
+    const from = normalizePath(String(args.from ?? ''))
+    const to = normalizePath(String(args.to ?? ''))
+    if (!from || !to || from === '/' || to === '/') return err('Invalid path')
+    if (from === to) return err('Source and destination are the same')
+    try {
+      await ctx.fs.moveEntry(from, to)
+      return ok(`Moved ${displayPath(from)} → ${displayPath(to)}`)
+    } catch (e) {
+      return err(`Move failed: ${e instanceof Error ? e.message : e}`)
+    }
+  },
+}
+
 export { joinPath }

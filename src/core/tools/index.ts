@@ -5,7 +5,7 @@
  */
 import type { CodeSandbox, Transport } from '../ports'
 import { ToolRegistry } from './registry'
-import { deleteFileTool, editFileTool, globTool, grepTool, lsTool, readFileTool, writeFileTool } from './fs'
+import { deleteFileTool, editFileTool, globTool, grepTool, lsTool, moveFileTool, readFileTool, writeFileTool } from './fs'
 import { createRunJsTool } from './js'
 import { createWebTools } from './web'
 import { askUserTool, spawnAgentTool, todoWriteTool } from './workflow'
@@ -33,6 +33,7 @@ export function createMainRegistry(deps: ToolDeps): ToolRegistry {
     grepTool,
     globTool,
     deleteFileTool,
+    moveFileTool,
     createRunJsTool(deps.sandbox),
     ...createWebTools(deps.transport),
     todoWriteTool,
@@ -57,6 +58,7 @@ export function createSubagentRegistry(deps: ToolDeps): ToolRegistry {
     grepTool,
     globTool,
     deleteFileTool,
+    moveFileTool,
     createRunJsTool(deps.sandbox),
     ...createWebTools(deps.transport),
     todoWriteTool,
