@@ -80,6 +80,12 @@ class TestFS implements VFileSystem {
   async listAll(): Promise<FileEntry[]> {
     return [...this.files.entries()].map(([path, c]) => ({ path, kind: 'file' as const, size: c.length }))
   }
+
+  async moveEntry(from: string, to: string): Promise<void> {
+    const content = await this.readFile(from)
+    await this.writeFile(to, content)
+    await this.deleteEntry(from)
+  }
 }
 
 /** 按请求序号回放 SSE 应答，并记录请求体（供压缩链路断言） */

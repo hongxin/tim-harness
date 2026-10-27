@@ -185,6 +185,11 @@ export function createWxFS(wx: WxLike): VFileSystem {
       await walk('/', 0)
       return out
     },
+    async moveEntry(from: string, to: string): Promise<void> {
+      const content = await this.readFile(from)
+      await this.writeFile(to, content)
+      await this.deleteEntry(from)
+    },
   }
 }
 
